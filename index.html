@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BP Simulator · Axian Energy (standalone) — v20</title>
+<title>BP Simulator · Axian Energy (standalone) — v21</title>
 <style>
 
 :root{--ink:#0E2A33;--panel:#12333D;--primary:#0E6E6B;--soft:#E7F1F0;--accent:#D99413;--ws:#F5F7F8;--line:#E3E9EB;--text:#12242B;--muted:#5C7078;--input:#0B5FA5}
@@ -2861,7 +2861,7 @@ summary.grpt .gtag{margin-left:auto;font-size:9px;font-weight:600;color:var(--mu
 }
 </script>
 </head><body>
-<div class="header"><div class="logo"><a href="https://axian-group.com/en/our-activities/energy/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;"><img src="https://www.afsiasolar.com/wp-content/uploads/2024/04/Axian_Energy_logo-removebg-preview.png" alt="Axian Energy" style="max-height:100%;max-width:100%;width:auto;height:auto;display:block;"></a></div><div><div class="htitle">BP Simulator · Axian Energy <span style="font-size:11px;font-weight:600;opacity:.6">v20</span></div><div class="hsub">Simplified business plans — PV / PV+BESS · sculpted debt · distribution waterfall · sensitivities</div></div><div class="htags" id="htags"></div></div>
+<div class="header"><div class="logo"><a href="https://axian-group.com/en/our-activities/energy/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;"><img src="https://www.afsiasolar.com/wp-content/uploads/2024/04/Axian_Energy_logo-removebg-preview.png" alt="Axian Energy" style="max-height:100%;max-width:100%;width:auto;height:auto;display:block;"></a></div><div><div class="htitle">BP Simulator · Axian Energy <span style="font-size:11px;font-weight:600;opacity:.6">v21</span></div><div class="hsub">Simplified business plans — PV / PV+BESS · sculpted debt · distribution waterfall · sensitivities</div></div><div class="htags" id="htags"></div></div>
 <div class="wrap"><div id="inputs"></div><div id="results"></div></div>
 <script>
 const C = {
@@ -3510,7 +3510,7 @@ const DEFAULTS = {
   country: "", city: "", region: "", cod: "",
   tech: "pv_bess", projectLife: 25, ppaTerm: 25, constructionMonths: 12,
   pvMW: 24, dcac: 1.2, yield: 1550, degY1: 1, degAnnual: 0.5, curtailment: 0, yieldScenario: "P50", p90ratio: 0.96, prodManual: false, prodAnnual: 35000, prodSeries: "",
-  yLat: 9.15, yLon: -4.58, yModule: "JinkoJKM640N", yTrack: "single_axis", yGCR: 35, yTilt: 0, yMaxAngle: 55, yAlbedo: 0.18, yGridKm: 0, yGridKv: 33, ySource: "nasa", yNrelKey: "0n1PxaKibpasxJc2tunGPZUrRILFhBdaluMqRYA7", yProxy: "https://aeg-solar-proxy.lucienkouamekouakou93.workers.dev/",
+  yLat: 9.15, yLon: -4.58, yModule: "JinkoJKM640N", yTrack: "single_axis", yGCR: 35, yTilt: 0, yMaxAngle: 55, yAlbedo: 0.18, yGridKm: 0, yGridKv: 33, ySource: "pvgis", yNrelKey: "0n1PxaKibpasxJc2tunGPZUrRILFhBdaluMqRYA7", yProxy: "https://aeg-solar-proxy.lucienkouamekouakou93.workers.dev/",
   yGHI: "", yTAMB: "", yDHI: "",
   bessMW: 10, bessMWh: 20, bessMode: "charged_by_pv", bessCycles: 1, bessRTE: 86, bessAvail: 98, billing: "combined",
   pvCapexPerW: 0.65, bessCapexPerKWh: 170, lineCapex: 0, devCapex: 1000000,
@@ -4623,10 +4623,6 @@ window.runYieldEstimate = async function(){
       if(ghi.length<12||tamb.length<12) throw new Error("Manual input: 12 monthly values are required for GHI and ambient temperature (diffuse is optional).");
       res={lat:opt.lat,lon:opt.lon,ghi:ghi,tamb:tamb,dhi:dhi.length>=12?dhi:null,albedo:new Array(12).fill((+p.yAlbedo)||0.18),source:"Manual input"};
       out=YieldEngine.estimate(res,opt); model="AEG engine (manual resource)";
-    } else if(p.ySource==="nrel"){
-      var nr=await fetchNREL(opt.lat,opt.lon,opt,p.yNrelKey);
-      var syNet=nr.syNet*(1-YieldEngine.LOSSES.availability)*(1-YieldEngine.LOSSES.degradationY1);
-      out=YieldEngine.fromSpecific(syNet,opt.dcMWp); out.source=nr.source; model="NREL PVWatts v8 model";
     } else if(p.ySource==="pvgis"){
       res=await fetchPVGIS(opt.lat,opt.lon); out=YieldEngine.estimate(res,opt); model="AEG engine (PVGIS-SARAH3 resource)";
     } else {
@@ -4652,7 +4648,7 @@ function yieldEstimatorHTML(){
   var e=state.yieldEst, moduleOpts=Object.keys(YMODULES).map(function(k){return '<option value="'+k+'"'+(p.yModule===k?" selected":"")+'>'+YMODULES[k].label+'</option>';}).join("");
   var body="";
   body+=help("Upstream (pre-screening) estimate of P50/P75/P90 specific yield from site coordinates. Engine validated to within 1% of the bankable PVsyst report for Kong. Does not replace a PVsyst EYA at financial close.");
-  body+='<div class="chips">'+chip("ySource","nasa","NASA POWER (no key)")+chip("ySource","pvgis","PVGIS-SARAH3")+chip("ySource","nrel","NREL PVWatts")+chip("ySource","manual","Manual input")+'</div>';
+  body+='<div class="chips">'+chip("ySource","pvgis","PVGIS-SARAH3")+chip("ySource","nasa","NASA POWER")+chip("ySource","manual","Manual input")+'</div>';
   body+=field("Latitude","yLat","°")+field("Longitude","yLon","°");
   body+='<label class="fld"><span>Module</span><span class="ig"><select onchange="setSel(\'yModule\',this.value)" style="max-width:100%">'+moduleOpts+'</select></span></label>';
   body+='<div class="chips">'+chip("yTrack","single_axis","Single-axis tracker")+chip("yTrack","fixed","Fixed tilt")+'</div>';
@@ -4661,14 +4657,6 @@ function yieldEstimatorHTML(){
   else body+=field("Max tracker angle","yMaxAngle","°");
   body+='<label class="fld"><span>Albedo'+infoTip("Ground reflectance (drives the bifacial rear-side gain). With NASA POWER selected, the real monthly albedo is fetched from NASA (ALLSKY_SRF_ALB) and this value is used only as a fallback / for Manual input. Typical: 0.15–0.20 vegetation/soil, 0.25–0.35 sand.")+'</span><span class="ig"><input type="number" step="0.01" min="0.05" max="0.9" value="'+p.yAlbedo+'" oninput="setNum(\'yAlbedo\',this.value)" onblur="snapField(this,\'yAlbedo\')"><i></i></span></label>';
   body+=field("Grid connection distance","yGridKm","km")+field("Evacuation voltage","yGridKv","kV");
-  if(p.ySource==="nrel"||p.ySource==="pvgis"){
-    body+='<label class="fld col"><span>Data proxy URL'+infoTip("NREL and PVGIS block direct browser calls (CORS). Deploy the free Cloudflare Worker (aeg-solar-proxy.js) and paste its URL here, e.g. https://aeg-solar-proxy.you.workers.dev — required for both sources.")+'</span><input type="text" class="tin" value="'+esc(p.yProxy||"")+'" oninput="setText(\'yProxy\',this.value)" placeholder="https://aeg-solar-proxy.<account>.workers.dev"></label>';
-    if(!(p.yProxy||"").trim()) body+=help("⚠ "+(p.ySource==="pvgis"?"PVGIS":"NREL")+" requires the proxy URL above (both are CORS-blocked from the browser).");
-  }
-  if(p.ySource==="nrel"){
-    body+='<label class="fld"><span>NREL API key'+infoTip("Free key at developer.nrel.gov/signup. NREL uses its own PVWatts model as an independent cross-check.")+'</span><span class="ig"><input type="text" value="'+esc(p.yNrelKey||"DEMO_KEY")+'" oninput="setText(\'yNrelKey\',this.value)"><i></i></span></label>';
-    body+=help("NREL PVWatts runs its own engine (its result is not re-scaled by the AEG fleet calibration). Coverage for Africa via NSRDB/Meteosat TMY — coarser than a tier-1 dataset. If it returns “Failed to fetch”, the NREL API is CORS-blocking this origin and needs a proxy.");
-  }
   if(p.ySource==="manual"){
     body+='<label class="fld col"><span>Monthly GHI (kWh/m², 12 values)</span><textarea class="tin" rows="2" style="resize:vertical;text-align:left;font-family:ui-monospace,monospace" oninput="setText(\'yGHI\',this.value)" placeholder="e.g. 178.7, 160.8, ...">'+esc(p.yGHI||"")+'</textarea></label>';
     body+='<label class="fld col"><span>Monthly ambient temp. (°C, 12 values)</span><textarea class="tin" rows="2" style="resize:vertical;text-align:left;font-family:ui-monospace,monospace" oninput="setText(\'yTAMB\',this.value)" placeholder="e.g. 26.8, 29.8, ...">'+esc(p.yTAMB||"")+'</textarea></label>';
