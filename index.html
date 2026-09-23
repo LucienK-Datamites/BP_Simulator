@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BP Simulator · Axian Energy (standalone) — v19</title>
+<title>BP Simulator · Axian Energy (standalone) — v20</title>
 <style>
 
 :root{--ink:#0E2A33;--panel:#12333D;--primary:#0E6E6B;--soft:#E7F1F0;--accent:#D99413;--ws:#F5F7F8;--line:#E3E9EB;--text:#12242B;--muted:#5C7078;--input:#0B5FA5}
@@ -2861,7 +2861,7 @@ summary.grpt .gtag{margin-left:auto;font-size:9px;font-weight:600;color:var(--mu
 }
 </script>
 </head><body>
-<div class="header"><div class="logo"><a href="https://axian-group.com/en/our-activities/energy/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;"><img src="https://www.afsiasolar.com/wp-content/uploads/2024/04/Axian_Energy_logo-removebg-preview.png" alt="Axian Energy" style="max-height:100%;max-width:100%;width:auto;height:auto;display:block;"></a></div><div><div class="htitle">BP Simulator · Axian Energy <span style="font-size:11px;font-weight:600;opacity:.6">v19</span></div><div class="hsub">Simplified business plans — PV / PV+BESS · sculpted debt · distribution waterfall · sensitivities</div></div><div class="htags" id="htags"></div></div>
+<div class="header"><div class="logo"><a href="https://axian-group.com/en/our-activities/energy/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;"><img src="https://www.afsiasolar.com/wp-content/uploads/2024/04/Axian_Energy_logo-removebg-preview.png" alt="Axian Energy" style="max-height:100%;max-width:100%;width:auto;height:auto;display:block;"></a></div><div><div class="htitle">BP Simulator · Axian Energy <span style="font-size:11px;font-weight:600;opacity:.6">v20</span></div><div class="hsub">Simplified business plans — PV / PV+BESS · sculpted debt · distribution waterfall · sensitivities</div></div><div class="htags" id="htags"></div></div>
 <div class="wrap"><div id="inputs"></div><div id="results"></div></div>
 <script>
 const C = {
@@ -4569,7 +4569,7 @@ async function fetchNASA(lat,lon){
 var DIM_=[31,28,31,30,31,30,31,31,30,31,30,31];
 async function fetchNREL(lat,lon,opt,key){
   var atype = opt.tracking==="fixed"?0:3; // 0 fixe open-rack, 3 mono-axe backtracking
-  var base=["https://developer.nlr.gov","https://developer.nrel.gov"];
+  var base=["https://developer.nrel.gov"];
   var q="/api/pvwatts/v8.json?api_key="+encodeURIComponent(key||"DEMO_KEY")
     +"&lat="+lat+"&lon="+lon+"&system_capacity="+(opt.dcMWp*1000)
     +"&azimuth=180&tilt="+(opt.tracking==="fixed"?opt.tilt:0)
