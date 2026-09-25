@@ -2959,7 +2959,7 @@ function escalFactor(t, flatIdx, periodic, rates, plen){
 function buildModelCore(p, ext) {
   ext = ext || {};
   const N = Math.max(1, Math.round(p.projectLife));
-  const aegCF = (p.cfadsBasis === "aeg");   // V23 — CFADS definition (AEG models: cash tax paid + VAT recovered in working capital)
+  const aegCF = (p.cfadsBasis === "aeg");   // V23 — CFADS definition (levered: cash tax paid + VAT recovered in working capital)
   const isAllow = (p.depMethod === "allow"); // V23 — tax allowance on project costs replaces fiscal depreciation
   const tenor = effTenor(p);
   const shlRate = effShlRate(p);
@@ -3039,7 +3039,7 @@ function buildModelCore(p, ext) {
     return arr;
   }
   function taxDepSchedule(idcVal) {
-    // Success fee + capitalised SEFA dev cost stay in the base; a PURE grant (NORAD) nets against it (IAS 20 net-of-asset).
+    // Success fee + capitalised reimbursable-grant dev cost stay in the base; a PURE grant nets against it (IAS 20 net-of-asset).
     const poolPV = Math.max(0, epcPV + dev + advisors + otherCapex + esConstr + duties + contingency + constrIns + carbonReg + successFee + grantUse - grantSource + idcVal + vatLost + vatFacIDC);
     const a = depSchedForPool(poolPV, p.depPvRate, p.depMethod, p.depInitAllow, p.depAccel);
     const b = depSchedForPool(epcBESS, p.depBessRate, p.depMethod, p.depInitAllow, p.depAccel);
@@ -3062,7 +3062,7 @@ function buildModelCore(p, ext) {
     const r = recapexDep();
     return arr.map((x, i) => x + r[i]);
   }
-  // V23 — Tax allowance on project costs (e.g. Kenya investment deduction, as in the AEG models): a share of the
+  // V23 — Tax allowance on project costs (investment deduction / capital allowance): a share of the
   //        capitalised project cost is granted as an allowance — Y1% in the COD year, then Next% per year on the residual
   //        (reducing balance, default) or on the original amount (straight-line). Book D&A is then NOT deductible: the
   //        allowance replaces it. Each year's allowance can only be used against taxable profit; the unused part is
@@ -3321,7 +3321,7 @@ function buildModelCore(p, ext) {
 
   // ---- Financing close: debt = min(gearing cap, DSCR sculpting capacity on P90) ----
   // V12.1 — Financing close. A PURE grant is a source that reduces the net funding need (gearing & DSCR sizing
-  //         then apply to uses − grant). A REIMBURSABLE (SEFA) grant is already inside baseCost as a use, so it is
+  //         then apply to uses − grant). A REIMBURSABLE grant is already inside baseCost as a use, so it is
   //         financed at FC by debt + equity like any project cost — it does NOT reduce the funding need.
   let D = (p.gearing / 100) * baseCost;
   let priDC = 0;   // V22 — debt PRI premium during construction (capitalised, like IDC)
@@ -3340,11 +3340,11 @@ function buildModelCore(p, ext) {
     { const eqCashPrev = Math.max(0, totalFunding - D - Math.min(grantSource, totalFunding) - vatFac0 - shlIDC);
       shlIDC = (p.shlIdcOn !== false) ? (eqCashPrev * (p.shlPct / 100) / 2) * (shlRate / 100) * Tc : 0; }
     finCostsC = upfront + commitment + idc + shlIDC + bankFeesC + priDC + vatFacIDC;   // total financing costs during construction
-    // Success fee on the TOTAL PROJECT COST incl. financing costs (as in the AEG models, where a macro breaks the
+    // Success fee on the TOTAL PROJECT COST incl. financing costs (Excel models often break this with a macro;
     // circularity) — solved here by iteration. Option: on hard CapEx only.
     successFee = (p.successFeeRate / 100) * ((p.successFeeBase === "hard") ? hardCapex : (hardCapex + grantUse + finCostsC));
     baseCost = hardCapex + successFee + grantUse;
-    totalFunding = baseCost + upfront + commitment + idc + shlIDC + bankFeesC + priDC + dsraFund + p.minReserve + vatUses + wcCap;   // baseCost already includes any SEFA reimbursement (a use); V22 — + VAT on CapEx
+    totalFunding = baseCost + upfront + commitment + idc + shlIDC + bankFeesC + priDC + dsraFund + p.minReserve + vatUses + wcCap;   // baseCost already includes any grant reimbursement (a use); V22 — + VAT on CapEx
     netFunding = Math.max(0, totalFunding - Math.min(grantSource, totalFunding));      // only a PURE grant reduces the raise
     gearingDebt = (p.gearing / 100) * Math.max(0, netFunding - vatNotGeared);          // V22 — VAT funded by facility / equity bridge is outside the gearing base
     const capFin = idc + priDC + shlIDC + bankFeesC;
@@ -3436,7 +3436,7 @@ function buildModelCore(p, ext) {
     const recurFees = acctFee + lcFee + (o.agencyFee || 0) + priDebt;   // #5 — agency fee (and V22 debt PRI) are debt-linked recurring fees
     const feeAmort = feeAmortArr[t - 1];
     const dNWC = dnwcBase[t - 1] || 0;                            // V11 — working-capital cash movement
-    const cfads = o.ebitda - recurFees - bt.taxCF - dNWC + bt.vatCF;   // realised CFADS (this scenario), net of WC — V23: taxCF = unlevered tax (conservative) or tax paid (AEG), vatCF = VAT recovered (AEG only)
+    const cfads = o.ebitda - recurFees - bt.taxCF - dNWC + bt.vatCF;   // realised CFADS (this scenario), net of WC — V23: taxCF = unlevered tax (conservative) or tax paid (levered), vatCF = VAT recovered (levered only)
     const dscr = d.seniorDS > 1e-6 ? cfads / d.seniorDS : null;
     const dsraNow = (p.dsraMode === "cash") ? dsraReq(t) : 0;
     const dDSRAcash = dsraNow - dsraPrev; dsraPrev = dsraNow;
@@ -3586,12 +3586,12 @@ function buildModelCore(p, ext) {
 
   // ---- LCOE ---- (asset cost excludes the success fee, which reverses to the sponsor)
   const disc = p.discount / 100;
-  let pvCost = hardCapex + grantUse + vatLost, pvPay = 0, pvE = 0;   // V22 — non-recoverable VAT is a real cost   // V12.1 — capitalised SEFA dev cost is part of the asset cost
+  let pvCost = hardCapex + grantUse + vatLost, pvPay = 0, pvE = 0;   // V22 — non-recoverable VAT is a real cost   // V12.1 — capitalised reimbursable-grant dev cost is part of the asset cost
   rows.forEach((x, i) => { const df = Math.pow(1 + disc, i + 1); pvCost += (x.opex + x.recapex) / df; pvPay += (x.revEnergy + x.revLeasing + x.revBess) / df; pvE += x.energySold / df; });
   const lcoeProject = pvE > 0 ? pvCost / pvE : null;
   const lcoeOfftaker = pvE > 0 ? pvPay / pvE : null;
 
-  const projSeries = [-(hardCapex + grantUse + vatInput + wcCap), ...rows.map((x) => x.projectFCF)];   // V22 — input VAT out at FC, recoveries in projectFCF   // V12.1 — SEFA reimbursement is a project cost financed at FC
+  const projSeries = [-(hardCapex + grantUse + vatInput + wcCap), ...rows.map((x) => x.projectFCF)];   // V22 — input VAT out at FC, recoveries in projectFCF   // V12.1 — grant reimbursement is a project cost financed at FC
   const priEqConstr = p.priEqOn ? (equityCash / 2) * (p.priEqCover / 100) * (p.priEqRate / 100) * Tc : 0;   // V22 — sponsor-paid, during construction
   const equitySeries = [-equityCash + successFee - priEqConstr, ...rows.map((x) => x.aegFCF)];
   // V22 — VAT now flows through the funding plan and the waterfall (no ad-hoc IRR adjustment needed).
@@ -3626,7 +3626,7 @@ function buildModelCore(p, ext) {
 }
 
 /* V23 — buildModel: in the "AEG" CFADS basis, the tax paid (and the VAT cash) that enter the CFADS depend on the debt,
-   which is sized on that CFADS. Solved by an outer fixed-point loop, as the AEG Excel models do with their sizing macro:
+   which is sized on that CFADS. Solved by an outer fixed-point loop (the equivalent of a sizing macro in Excel):
      1) P90 (sizing) run: the tax paid / VAT cash of pass k feed the sizing CFADS of pass k+1 until the debt converges;
      2) base run (scenario shown): same loop on the realised CFADS (DSCR, LLCR, lock-up), with the debt size fixed by 1).
    The "unlevered" basis is a single pass (v22 behaviour). */
@@ -3746,7 +3746,7 @@ function applyFiscalDB(rec){
   p.vatCapexShare = (v.vat_solar_exemption==="Yes") ? 30 : 100;
   p.vatRefundMonths = _isn(v.vat_refund_period)? Math.round(v.vat_refund_period) : D.vatRefundMonths;
   // V22 — recovery route and VAT-ability of sales from the DB
-  // Principle (AEG): the CapEx VAT credit is recovered by offset against the VAT collected on sales net of VAT paid on OpEx.
+  // Principle: the CapEx VAT credit is recovered by offset against the VAT collected on sales net of VAT paid on OpEx.
   p.vatRecovery = "offset";
   p.vatSalesPct = (v.vat_revenue_treatment==="Exempt"||v.vat_revenue_treatment==="Zero-rated") ? 0 : 100;
   p.vatRecoverPct = (v.vat_capex_treatment==="Taxable non-recoverable") ? 0
@@ -3929,7 +3929,7 @@ const TIP = {
  omSplit:"Split O&M into a short-term contract (by the EPC, first years after COD) and a long-term contract (often internalised) thereafter.",omShortYears:"Number of years the EPC short-term O&M applies after COD (typically 2).",omPVShort:"PV O&M during the short-term (EPC) period, year-1 amount.",omBESSShort:"BESS O&M during the short-term (EPC) period, year-1 amount.",
  bessIdx:"Annual indexation of the BESS availability / capacity fee (independent of the tariff).",
  agencyFeeAnnual:"Annual facility-agent fee, paid while the senior debt is outstanding.",
- grantAmount:"Grant amount (in the CapEx input currency). Pure grant: reduces the debt+equity to raise. Reimbursable (SEFA): a dev cost financed at FC, added to the uses.",
+ grantAmount:"Grant amount (in the CapEx input currency). Pure grant: reduces the debt+equity to raise. Reimbursable: a dev cost financed at FC, added to the uses.",
  tariffPeriodic:"Set tariff escalation by period (Y1-Y5, Y6-Y10, ...) instead of a single flat rate.",escalPeriodLen:"Length of each escalation period, in years (e.g. 5).",
  arDaysContract:"Offtaker contractual payment terms, in days (e.g. 30-60).",arDaysDelay:"Structural payment delay / arrears beyond contractual terms, in days — common with public utilities.",apDaysOpex:"Days the SPV takes to pay its own operating costs (O&M, admin, agency).",
  opexIns:"Operational insurance, year 1.",opexES:"Environmental & social / HSE, year 1.",opexLand:"Land lease, year 1.",opexOther:"Other operating costs, year 1.",
@@ -4091,7 +4091,7 @@ function inputsHTML() {
     s += sub("Applied rates");
     s += field("Customs duties","dutyRate","%")+field("Import share (of EPC)","importShare","%")+field("Contingency","contingencyRate","%")+field("Construction insurance","constrInsRate","%")+field("Success dev fee","successFeeRate","%");
     s += seg("successFeeBase",[["total","on total project cost"],["hard","on hard CapEx"]]);
-    s += help(p.successFeeBase==="hard" ? "Success fee = rate &times; hard CapEx." : "Success fee = rate &times; total project cost (hard CapEx + financing costs: fees, IDC senior &amp; SHL, bank fees, PRI) — circular, solved by iteration (the AEG models break it with a macro).");
+    s += help(p.successFeeBase==="hard" ? "Success fee = rate &times; hard CapEx." : "Success fee = rate &times; total project cost (hard CapEx + financing costs: fees, IDC senior &amp; SHL, bank fees, PRI) — circular, solved by iteration.");
     { let g = field("Re-capex PV","recapexPV",p.capexCcy,"10000")+field("Re-capex PV year","recapexPVYear","yr","1");
       if (p.tech==="pv_bess") {
         g += field("Re-capex BESS (full replacement)","recapexBESS",p.capexCcy,"10000")+field("Re-capex BESS year","recapexBESSYear","yr","1");
@@ -4175,10 +4175,10 @@ function inputsHTML() {
     s += '<div class="chips">'+chip("repay","sculpt","Sculpted")+chip("repay","annuity","Annuity")+chip("repay","linear","Linear")+'</div>';
     if (p.repay==="sculpt") s += field("Target DSCR (sizing)","sculptDSCR","x");
     s += '<div class="help">CFADS definition (sizing, DSCR, LLCR, lock-up)</div>';
-    s += seg("cfadsBasis",[["aeg","AEG models"],["unlevered","Conservative"]]);
+    s += seg("cfadsBasis",[["aeg","Levered (tax paid + VAT)"],["unlevered","Unlevered (conservative)"]]);
     s += help(p.cfadsBasis==="aeg"
-      ? "<b>AEG models</b>: CFADS = EBITDA − fees − ΔWC − <b>tax actually paid</b> (after interest, thin cap, allowance / loss carryforward, plus other taxes) <b>+ VAT recovered</b> (it unwinds a working-capital receivable). "+(p.repay==="sculpt"?"Debt = min(max gearing × uses, sculpted capacity of the P90 CFADS at the target DSCR). The tax↔debt circularity is solved by iteration.":"")
-      : "<b>Conservative</b> (v22): CFADS = EBITDA − fees − ΔWC − <b>unlevered tax</b> (no interest shield). VAT recoveries sit below the debt service and go to shareholders.");
+      ? "<b>Levered</b> (market standard): CFADS = EBITDA − fees − ΔWC − <b>tax actually paid</b> (after interest, thin cap, allowance / loss carryforward, plus other taxes) <b>+ VAT recovered</b> (it unwinds a working-capital receivable). "+(p.repay==="sculpt"?"Debt = min(max gearing × uses, sculpted capacity of the P90 CFADS at the target DSCR). The tax↔debt circularity is solved by iteration.":"")
+      : "<b>Unlevered</b> (conservative): CFADS = EBITDA − fees − ΔWC − <b>unlevered tax</b> (no interest shield). VAT recoveries sit below the debt service and go to shareholders.");
     s += sub("Fees &amp; reserves");
     s += field("Upfront fee","upfrontFee","% debt")+field("Commitment fee","commitmentFee","%/yr");
     s += field("Agency fee","agencyFeeAnnual",p.ccy+"/yr","5000");
@@ -4192,8 +4192,8 @@ function inputsHTML() {
     { let g = toggleRow("grantOn","Include grant / subsidy");
       if (p.grantOn) {
         g += field("Grant amount","grantAmount",p.capexCcy,"10000");
-        g += '<div class="chips">'+chip("grantType","pure","Pure (non-repayable)")+chip("grantType","reimbursable","Reimbursable (SEFA)")+'</div>';
-        g += help("<b>Pure</b> (e.g. NORAD): non-repayable capital subsidy — first money in, reduces the debt+equity to raise (lifts equity IRR, no service). It <b>nets against the depreciable base</b> (IAS 20 net-of-asset), so it trims the tax shield a little. <b>Reimbursable</b> (e.g. AfDB SEFA): a dev-phase bridge — SEFA pre-funds development study costs and the project reimburses it <b>from the financing at FC</b>, so it is a project cost <b>financed at FC by debt+equity</b> and <b>stays in the depreciable base</b> (it isn't really a grant). It raises total uses — not a later cash repayment, and its pure dev-phase cash benefit sits before FC (outside this annual model). Don't also count the same study cost in Development CapEx.");
+        g += '<div class="chips">'+chip("grantType","pure","Pure (non-repayable)")+chip("grantType","reimbursable","Reimbursable")+'</div>';
+        g += help("<b>Pure</b>: non-repayable capital subsidy — first money in, reduces the debt+equity to raise (lifts equity IRR, no service). It <b>nets against the depreciable base</b> (IAS 20 net-of-asset), so it trims the tax shield a little. <b>Reimbursable</b>: a dev-phase bridge — the facility pre-funds development study costs and the project reimburses it <b>from the financing at FC</b>, so it is a project cost <b>financed at FC by debt+equity</b> and <b>stays in the depreciable base</b> (it isn't really a grant). It raises total uses — not a later cash repayment, and its pure dev-phase cash benefit sits before FC (outside this annual model). Don't also count the same study cost in Development CapEx.");
       }
       s += collapse("fin_grant","Grant / subsidy", g, p.grantOn, p.grantOn?"on":""); }
     { let g = toggleRow("refiOn","Refinance the senior debt");
@@ -4236,7 +4236,7 @@ function inputsHTML() {
     s += '<div class="chips">'+chip("depMethod","sl","Straight-line")+chip("depMethod","db","Declining / accelerated")+chip("depMethod","allow","Tax allowance")+'</div>';
     s += field("Depreciation life","bookLife","yrs","1");
     if (p.depMethod === "allow") {
-      s += help("<b>Tax allowance on project costs</b> (e.g. Kenya investment deduction, as in the AEG models). The allowance <b>replaces</b> fiscal depreciation: book D&amp;A stays in the P&amp;L but is not deductible. Each year's allowance is used against taxable profit (after ordinary losses); the unused part is carried forward and lapses after the validity period. Re-capex receives its own allowance from its year.");
+      s += help("<b>Tax allowance on project costs</b> (investment deduction / capital allowance). The allowance <b>replaces</b> fiscal depreciation: book D&amp;A stays in the P&amp;L but is not deductible. Each year's allowance is used against taxable profit (after ordinary losses); the unused part is carried forward and lapses after the validity period. Re-capex receives its own allowance from its year.");
       s += field("Qualifying share of project cost","allowBasePct","%")+field("Allowance — first year","allowY1Pct","% cost")+field("Allowance — following years","allowNextPct","%/yr");
       s += seg("allowNextMode",[["rb","On residual (reducing)"],["sl","On original cost"]]);
       s += field("Validity of unused allowance","allowValidity","yrs","1");
@@ -4296,7 +4296,7 @@ function inputsHTML() {
     s += help("BP currency is set in the Overview tab. FX depreciation is used only to translate IRR into USD.");
   }
   return head + '<div class="card pad">'+s+'</div>'
-    + help('<b style="color:'+C.input+'">Blue</b> values are inputs. Defaults inspired by real models (Mauritius base).');
+    + help('<b style="color:'+C.input+'">Blue</b> values are inputs. Default values are illustrative.');
 }
 
 /* ---------------- CHART HELPERS ---------------- */
@@ -4431,6 +4431,12 @@ function tornadoSVG(drivers, base){
 }
 
 /* ---------------- STATEMENT ROWS ---------------- */
+// V23 — collapsible block of statement rows: a summary row with a ▸/▾ toggle; detail rows shown only when open (closed by default).
+function trowGrp(key, label, vals, detail, o) {
+  const open = !!state.groups[key];
+  const lbl = '<span style="cursor:pointer" onclick="toggleStmt(\''+key+'\')" title="'+(open?"Hide":"Show")+' details">'+(open?"▾ ":"▸ ")+label+'</span>';
+  return trow(lbl, vals, o) + (open ? detail : "");
+}
 function trow(label, vals, o) {
   o=o||{}; const fmt=o.fmt||k;
   const tds=vals.map(v=>{const neg=o.sign&&typeof v==="number"&&v<0;const col=o.memo?C.muted:(neg?C.neg:(o.accent?C.primary:C.text));const txt=typeof v==="number"?fmt(v):v;return '<td class="num" style="color:'+col+';font-weight:'+(o.strong?700:400)+(o.memo?';font-style:italic':'')+'">'+txt+'</td>';}).join('');
@@ -4546,7 +4552,7 @@ function onePagerHTML(m, S, K, effG){
     + row("Hard CapEx", M(m.hardCapex)+"M") + row("IDC + fees", k(m.idc+m.upfront+m.commitment)+"k")
     + row("DSRA + min reserve", k(m.dsraFunded+p.minReserve)+"k") + (m.vatInput>0?row("VAT on CapEx", k(m.vatUses)+"k"):"") + row("Total funding", M(m.totalFunding)+"M")
     + row("Senior debt", M(m.debt)+"M") + (m.vatFac0>0?row("VAT facility", k(m.vatFac0)+"k"):"") + row("Equity + SHL", M(m.equityTotal)+"M") + row("· of which SHL", M(m.shl0)+"M")
-    + (p.grantOn&&m.grant>0? row(p.grantType==="pure"?"Grant (non-repayable)":"SEFA reimb. (financed at FC)", M(m.grant)+"M"):"") + '</div>';
+    + (p.grantOn&&m.grant>0? row(p.grantType==="pure"?"Grant (non-repayable)":"Grant reimb. (financed at FC)", M(m.grant)+"M"):"") + '</div>';
   h+='<div class="opsec"><h3>Key terms</h3>'
     + row("Gearing (achieved)", nf1.format(effG)+"%"+(m.bindGearing?"":" (DSCR-cap)")) + row("Tenor / PPA", m.tenor+"y / "+p.ppaTerm+"y")
     + row("All-in rate", nf1.format(p.interest)+"%") + row("Repayment", {sculpt:"Sculpted @ "+nf1.format(p.sculptDSCR)+"x",annuity:"Annuity",linear:"Linear"}[p.repay])
@@ -4588,8 +4594,8 @@ function resultsHTML() {
   else if (K.eqIRR<0) warn.push(["warn","Equity IRR is negative at these assumptions."]);
   if (K.minDSCR!=null && K.minDSCR<1) warn.push(["err","Minimum DSCR "+xd(K.minDSCR)+" (<1x) - debt service not fully covered in at least one year."]);
   else if (K.minDSCR!=null && K.minDSCR<1.05) warn.push(["warn","Minimum DSCR is thin ("+xd(K.minDSCR)+")."]);
-  if (m.cfadsIter && !m.cfadsIter.converged) warn.push(["warn","CFADS (AEG basis): the tax ↔ debt iteration did not fully converge ("+m.cfadsIter.sizing+" / "+m.cfadsIter.base+" passes) — results are approximate. Check the lock-up thresholds or switch to the conservative CFADS."]);
-  if (m.cfadsBasis==="aeg" && m.vatInput>0 && m.vatRecMode==="refund" && p.repay==="sculpt") warn.push(["warn","CFADS (AEG basis) with a VAT <b>refund</b>: the refund enters the CFADS in year "+m.vatRecoverYr+" and the sculpted repayment absorbs it (spike in debt service). Offset is the AEG standard."]);
+  if (m.cfadsIter && !m.cfadsIter.converged) warn.push(["warn","CFADS (levered basis): the tax ↔ debt iteration did not fully converge ("+m.cfadsIter.sizing+" / "+m.cfadsIter.base+" passes) — results are approximate. Check the lock-up thresholds or switch to the conservative CFADS."]);
+  if (m.cfadsBasis==="aeg" && m.vatInput>0 && m.vatRecMode==="refund" && p.repay==="sculpt") warn.push(["warn","CFADS (levered basis) with a VAT <b>refund</b>: the refund enters the CFADS in year "+m.vatRecoverYr+" and the sculpted repayment absorbs it (spike in debt service). An offset recovery spreads it over the years."]);
   if (p.repay==="sculpt" && m.bindGearing===false) warn.push(["warn","Debt is DSCR-constrained: sized down to hold "+nf1.format(p.sculptDSCR)+"x on P90 — the gearing cap ("+p.gearing+"%) is not reached. Sculpted (achieved) gearing: <b>"+nf1.format(effGearing)+"%</b>."]);
   if (p.tech==="pv_bess" && p.bessMWh>0) { const minS=Math.min(...R.map(x=>x.bessSoh)); if (minS<0.8) { const y=R.find(x=>x.bessSoh===minS); warn.push(["warn","BESS usable capacity falls to "+nf1.format(minS*100)+"% of contracted (Y"+y.year+")"+(p.bessFeeOnAvail?" — the capacity fee drops accordingly":"")+". Consider augmentation or a replacement (CapEx &rarr; Re-CapEx)."]); } }
   { const bmax=Math.max(Math.abs(m.bs0.check),...R.map(x=>Math.abs(x.bs.check))); if (bmax>1) warn.push(["err","Balance sheet does not balance (max gap "+k(bmax)+"k) — please report this case."]); }
@@ -4610,7 +4616,7 @@ function resultsHTML() {
   out += '<div class="box fullbox"><div class="boxt">Financing plan ('+p.ccy+') — Sources & Uses</div><div class="suGrid">'
     + '<div><div class="suh">Uses</div>'
       + su("Hard CapEx", M(m.hardCapex)+"M")
-      + (p.grantOn && p.grantType==="reimbursable" && m.grantUse>0 ? su("SEFA reimbursement (dev, at FC)", k(m.grantUse)+"k") : "")
+      + (p.grantOn && p.grantType==="reimbursable" && m.grantUse>0 ? su("Grant reimbursement (dev, at FC)", k(m.grantUse)+"k") : "")
       + su("Success dev fee ("+p.successFeeRate+"% of "+(p.successFeeBase==="hard"?"hard CapEx":"total cost")+")", k(m.successFee)+"k")
       + su("<b>Financing costs</b>", k(m.finCostsC)+"k")
       + su("&nbsp;&middot; upfront + commitment fees", k(m.upfront+m.commitment)+"k")
@@ -4625,7 +4631,7 @@ function resultsHTML() {
       + su("Total uses", M(m.totalFunding)+"M", 1) + '</div>'
     + '<div><div class="suh">Sources</div>'
       + su("Senior debt ("+(m.bindGearing?p.gearing+"%":"sculpted "+nf1.format(effGearing)+"%")+")", M(m.debt)+"M")
-      + su("&nbsp;&middot; sized by", (m.bindGearing?("gearing "+p.gearing+"%"):("DSCR "+nf1.format(p.sculptDSCR)+"x · cap "+p.gearing+"% not reached"))+" · CFADS "+(m.cfadsBasis==="aeg"?"AEG":"conservative"))
+      + su("&nbsp;&middot; sized by", (m.bindGearing?("gearing "+p.gearing+"%"):("DSCR "+nf1.format(p.sculptDSCR)+"x · cap "+p.gearing+"% not reached"))+" · CFADS "+(m.cfadsBasis==="aeg"?"levered":"unlevered"))
       + (p.repay==="sculpt"&&m.sizingDSCR?su("&nbsp;&middot; sculpted DSCR (P90)", nf2.format(m.sizingDSCR)+"x flat"):"")
       + (m.vatFac0>0 ? su("VAT facility (recoverable VAT)", k(m.vatFac0)+"k") : "")
       + su("Equity + SHL (AEG)", M(m.equityTotal)+"M")
@@ -4668,9 +4674,10 @@ function resultsHTML() {
         + trow("EBIT",R.map(x=>x.ebit),{strong:1,sign:1})
         + trow(m.refiYears&&m.refiYears.length?"Fin. fee amort. / write-off":"Fin. fee amort.",R.map(x=>-x.feeAmort),{sign:1})+trow("Senior interest",R.map(x=>-x.interest),{sign:1})+trow("SHL interest",R.map(x=>-x.shlInterest),{sign:1})
         + (R.some(x=>x.whtIntCost>0.5)?trow("WHT on senior interest (gross-up)",R.map(x=>-x.whtIntCost),{sign:1}):"")
-        + (R.some(x=>x.vatFacInt>0.5)?trow("VAT facility interest",R.map(x=>-x.vatFacInt),{sign:1}):"")
+        + ((R.some(x=>x.vatFacInt>0.5)||R.some(x=>x.vatWO>0.5))?trowGrp("pnl_vat","VAT items",R.map(x=>-(x.vatFacInt+x.vatWO)),
+            (R.some(x=>x.vatFacInt>0.5)?trow("&nbsp;&nbsp;· VAT facility interest",R.map(x=>-x.vatFacInt),{sign:1}):"")
+          + (R.some(x=>x.vatWO>0.5)?trow("&nbsp;&nbsp;· VAT credit written off (unrecovered)",R.map(x=>-x.vatWO),{sign:1}):""),{sign:1}):"")
         + (R.some(x=>x.refiCost>0.5)?trow("Refinancing costs (fees, breakage)",R.map(x=>-x.refiCost),{sign:1}):"")
-        + (R.some(x=>x.vatWO>0.5)?trow("VAT credit written off (unrecovered)",R.map(x=>-x.vatWO),{sign:1}):"")
         + trow("EBT (pre-tax)",R.map(x=>x.ebt),{strong:1,sign:1})+trow("Income tax",R.map(x=>-x.tax),{sign:1})+trow("Other taxes",R.map(x=>-x.otherTax),{sign:1})+trow("Net income",R.map(x=>x.netIncome),{strong:1,sign:1})
         + (p.depMethod==="allow"?trow("memo: tax allowance granted",R.map(x=>x.allowAdd),{memo:1})+trow("memo: tax allowance used",R.map(x=>-x.allowUsed),{memo:1})+trow("memo: tax allowance lapsed",R.map(x=>-x.allowExp),{memo:1})+trow("memo: unused allowance c/f (end of year)",R.map(x=>x.allowBal),{memo:1}):"");
     } else if (state.otab==="cf") {
@@ -4683,7 +4690,7 @@ function resultsHTML() {
         + ((p.grantOn&&p.grantType==="pure"&&m.grant>0)?trow("Grant (non-repayable)",[m.grant,...Z],{}):"")
         + trow("Hard CapEx",[-m.hardCapex,...Z],{sign:1})
         + (vatOn?trow("VAT on CapEx (input VAT paid)",[-m.vatInput,...Z],{sign:1}):"")
-        + ((p.grantOn&&p.grantType==="reimbursable"&&m.grantUse>0)?trow("SEFA reimbursement (dev, at FC)",[-m.grantUse,...Z],{sign:1}):"")
+        + ((p.grantOn&&p.grantType==="reimbursable"&&m.grantUse>0)?trow("Grant reimbursement (dev, at FC)",[-m.grantUse,...Z],{sign:1}):"")
         + trow("Financing fees, IDC, bank fees & reserves (cash)",[-(m.idc+m.upfront+m.commitment+m.bankFeesC+m.dsraFunded+p.minReserve+m.vatFacIDC+m.priDC),...Z],{sign:1})
         + (m.wcCap>0?trow("Initial working capital (funded reserve)",[-m.wcCap,...Z],{sign:1}):"")
         + trow("Success fee to sponsor (COD)",[-m.successFee,...Z],{sign:1})
@@ -4704,10 +4711,11 @@ function resultsHTML() {
         + trow("MRA provision",[0,...R.map(x=>-x.mraContribution)],{sign:1})
         + (any(x=>x.mraDraw)?trow("MRA release (funds re-capex)",[0,...R.map(x=>x.mraDraw)],{sign:1}):"")
         + trow("DSRA movement",[0,...R.map(x=>-x.dDSRAcash)],{sign:1})
-        + (vatOn?trow("VAT recovered ("+(m.vatRecMode==="offset"?"offset vs output VAT":"refund")+")",[0,...R.map(x=>x.vatRec)],{sign:1}):"")
-        + ((vatOn&&m.vatRecMode==="offset")?trow("memo: VAT collected on sales",["",...R.map(x=>x.vatOut)],{memo:1})+trow("memo: VAT paid on OpEx",["",...R.map(x=>-x.vatInOpex)],{memo:1})+trow("memo: remaining VAT credit (end of year)",[m.bs0.vatRecv,...R.map(x=>x.bs.vatRecv)],{memo:1}):"")
-        + (facOn?trow("VAT facility interest",[0,...R.map(x=>-x.vatFacInt)],{sign:1})+trow("VAT facility repayment",[0,...R.map(x=>-x.vatFacRepay)],{sign:1}):"")
-        + ((m.cfadsBasis==="aeg"&&vatOn)?trow("less VAT cash already in CFADS",[0,...R.map(x=>-x.vatCF)],{sign:1}):"")
+        + (vatOn?trowGrp("cf_vat",(m.cfadsBasis==="aeg"?"VAT — net, outside CFADS":"VAT recovered, net"),[0,...R.map(x=>x.vatRec-x.vatFacInt-x.vatFacRepay-x.vatCF)],
+              trow("&nbsp;&nbsp;· VAT recovered ("+(m.vatRecMode==="offset"?"offset vs output VAT":"refund")+")",[0,...R.map(x=>x.vatRec)],{sign:1})
+            + ((m.vatRecMode==="offset")?trow("memo: VAT collected on sales",["",...R.map(x=>x.vatOut)],{memo:1})+trow("memo: VAT paid on OpEx",["",...R.map(x=>-x.vatInOpex)],{memo:1})+trow("memo: remaining VAT credit (end of year)",[m.bs0.vatRecv,...R.map(x=>x.bs.vatRecv)],{memo:1}):"")
+            + (facOn?trow("&nbsp;&nbsp;· VAT facility interest",[0,...R.map(x=>-x.vatFacInt)],{sign:1})+trow("&nbsp;&nbsp;· VAT facility repayment",[0,...R.map(x=>-x.vatFacRepay)],{sign:1}):"")
+            + ((m.cfadsBasis==="aeg")?trow("&nbsp;&nbsp;· less VAT cash already in CFADS",[0,...R.map(x=>-x.vatCF)],{sign:1}):""),{sign:1}):"")
         + (any(x=>x.refiNew)?trow("Refinancing — new loan",[0,...R.map(x=>x.refiNew)],{sign:1})+trow("Refinancing — old debt repaid",[0,...R.map(x=>-x.refiRepaid)],{sign:1})+trow("Refinancing — costs",[0,...R.map(x=>-x.refiCost)],{sign:1}):"")
         + trow("Net cash generated (for distribution)",[0,...R.map(x=>x.distCash)],{strong:1})
         + sec("Shareholder waterfall")
@@ -4861,7 +4869,8 @@ window.toggle=(k2)=>{ p[k2]=!p[k2]; renderInputs(); renderResults(); };
 window.setCcy=(v)=>{ p.ccy=v; p.fx=CCYS[v]; renderInputs(); renderResults(); };
 window.setPeriodRate=(i,v)=>{ if(!Array.isArray(p.tariffIdxPeriods)) p.tariffIdxPeriods=[]; let x=parseFloat(v); if(!isFinite(x)) x=0; x=Math.min(Math.max(x,0),20); p.tariffIdxPeriods[i]=x; renderResults(); };
 window.setEscalLen=(v)=>{ let x=parseInt(v,10); if(!isFinite(x)) x=5; p.escalPeriodLen=clampVal("escalPeriodLen",x); renderInputs(); renderResults(); };
-window.setGroup=(k,v)=>{ state.groups[k]=v; };   // V11 — remember open/closed collapsible sections
+window.setGroup=(k,v)=>{ state.groups[k]=v; };
+window.toggleStmt=(k)=>{ state.groups[k]=!state.groups[k]; renderResults(); };   // V23 — statement row groups (VAT details)   // V11 — remember open/closed collapsible sections
 window.toggleCumul=()=>{ state.hideCumul=!state.hideCumul; renderResults(); };   // V12 — hide/show cumulative line on the shareholder CF chart
 window.setTwoWay=(which,v)=>{ if(which==="row") state.twoWayRow=v; else if(which==="col") state.twoWayCol=v; else state.twoWayMetric=v; renderResults(); };
 window.setName=(v)=>{ p.name=v; updateSaveStatus(); };
@@ -5058,7 +5067,7 @@ var YieldEngine = (function(){
     for(var m=0;m<12;m++){var lo=tempLoss(poa.hourly[m].poa,poa.hourly[m].tamb,poa.hourly[m].wind,opt.module.gamma,opt.uc,opt.uv,opt.shape||0.88); var w=poa.hourly[m].poa.reduce(function(a,b){return a+b;},0); tNum+=lo*w; tDen+=w;}
     var tempL=tDen>0?tNum/tDen:0, yDc=yNom*(1+tempL)*dcF(L);
     var Lclip=clipFromILR(opt.ilr), yAc=yDc*(acF(L)/(1-L.inverterClip)*(1-Lclip));
-    var FLEET_CAL=0.987; // calibration flotte: centré sur 9 rapports PVsyst Axian (MAE 0.8%)
+    var FLEET_CAL=0.987; // fleet calibration: centred on 9 PVsyst reports (MAE 0.8%)
     var gLoss=gridLineLoss(opt.gridKm||0,opt.gridKv||33), yBus=yAc*(1-gLoss)*FLEET_CAL;
     // V22 — the estimator now returns yield AT 100% AVAILABILITY and BEFORE first-year degradation (PVsyst "specific
     //        production" basis, which is what the fleet calibration targets). Availability (plant + grid) and degradation
@@ -5179,14 +5188,14 @@ window.runYieldEstimate = async function(){
       res={lat:opt.lat,lon:opt.lon,ghi:ghi,tamb:tamb,dhi:dhi.length>=12?dhi:null,albedo:new Array(12).fill((+p.yAlbedo)||0.18),source:"Manual input"};
       out=YieldEngine.estimate(res,opt); model="AEG engine (manual resource)";
     } else if(p.ySource==="pvgis"){
-      try{ res=await fetchPVGIS(opt.lat,opt.lon); model="AEG engine (PVGIS-SARAH3 resource)"; }
+      try{ res=await fetchPVGIS(opt.lat,opt.lon); model="Yield engine (PVGIS-SARAH3 resource)"; }
       catch(ePv){ // V22 — automatic fallback so the PM is never stuck: NASA POWER is CORS-open and needs no proxy
-        res=await fetchNASA(opt.lat,opt.lon); model="AEG engine (NASA POWER resource — PVGIS fallback)";
+        res=await fetchNASA(opt.lat,opt.lon); model="Yield engine (NASA POWER resource — PVGIS fallback)";
         var fb="PVGIS unavailable — "+((ePv&&ePv.message)||ePv)+". NASA POWER used instead (coarser resource data: results can differ by a few % from SARAH3 — cross-check before relying on them).";
       }
       out=YieldEngine.estimate(res,opt); if(fb) out.fallback=fb;
     } else {
-      res=await fetchNASA(opt.lat,opt.lon); out=YieldEngine.estimate(res,opt); model="AEG engine (NASA POWER resource)";
+      res=await fetchNASA(opt.lat,opt.lon); out=YieldEngine.estimate(res,opt); model="Yield engine (NASA POWER resource)";
     }
     if(res&&res.source&&!out.source) out.source=res.source;
     out.model=model; out.status="ok"; state.yieldEst=out; renderInputs();
