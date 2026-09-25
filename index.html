@@ -4679,7 +4679,8 @@ function resultsHTML() {
           + (R.some(x=>x.vatWO>0.5)?trow("&nbsp;&nbsp;· VAT credit written off (unrecovered)",R.map(x=>-x.vatWO),{sign:1}):""),{sign:1}):"")
         + (R.some(x=>x.refiCost>0.5)?trow("Refinancing costs (fees, breakage)",R.map(x=>-x.refiCost),{sign:1}):"")
         + trow("EBT (pre-tax)",R.map(x=>x.ebt),{strong:1,sign:1})+trow("Income tax",R.map(x=>-x.tax),{sign:1})+trow("Other taxes",R.map(x=>-x.otherTax),{sign:1})+trow("Net income",R.map(x=>x.netIncome),{strong:1,sign:1})
-        + (p.depMethod==="allow"?trow("memo: tax allowance granted",R.map(x=>x.allowAdd),{memo:1})+trow("memo: tax allowance used",R.map(x=>-x.allowUsed),{memo:1})+trow("memo: tax allowance lapsed",R.map(x=>-x.allowExp),{memo:1})+trow("memo: unused allowance c/f (end of year)",R.map(x=>x.allowBal),{memo:1}):"");
+        + (p.depMethod==="allow"?trowGrp("pnl_allow","memo: tax allowance used",R.map(x=>-x.allowUsed),
+            trow("&nbsp;&nbsp;· allowance granted",R.map(x=>x.allowAdd),{memo:1})+trow("&nbsp;&nbsp;· allowance lapsed",R.map(x=>-x.allowExp),{memo:1})+trow("&nbsp;&nbsp;· unused allowance c/f (end of year)",R.map(x=>x.allowBal),{memo:1}),{memo:1}):"");
     } else if (state.otab==="cf") {
       const Z=R.map(()=>0), any=(f)=>R.some(x=>Math.abs(f(x)||0)>0.5);
       const vatOn=m.vatInput>0, facOn=m.vatFac0>0;
