@@ -32,7 +32,7 @@ body{margin:0;background:var(--ws);color:var(--text);font-family:Calibri,"Segoe 
 .fld>span:first-child{font-size:12.5px;color:var(--muted)}
 .ig{display:flex;align-items:center;gap:4px}
 .ig input,.ig select{width:96px;border:1px solid var(--line);border-radius:6px;padding:4px 8px;text-align:right;font-size:12.5px;color:var(--input);font-weight:600;font-variant-numeric:tabular-nums}
-.ig select{width:140px}
+.ig select{width:140px;background:#fff}
 .ig i{width:56px;font-style:normal;font-size:10.5px;color:var(--muted)}
 .ig b.num{width:auto;color:var(--ink)}
 .sub{margin:10px 0 3px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--red2);border-bottom:1px solid #F6C5CE;padding-bottom:2px}
@@ -94,6 +94,17 @@ tr.secrow td{padding:9px 12px 3px !important;font-size:10px !important;font-weig
 .tbtn:hover{background:#fff}
 .tsel{border:1px solid var(--line);background:#fff;color:var(--ink);font-size:11px;border-radius:6px;padding:3px 6px;max-width:120px}
 .fld.col{flex-direction:column;align-items:stretch;gap:3px}
+.fld.ov .ig input,.fld.ov .ig select{width:190px;text-align:left}
+.namerow{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.namerow .nameinput{margin-bottom:0}
+.sstat{font-size:10.5px;color:var(--muted);text-align:right;min-height:14px}
+.sstat i{font-style:normal;font-size:9px;margin-right:4px}
+.tbar{display:flex;flex-direction:column;gap:5px;margin-bottom:9px;padding:6px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tgrp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.tgl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);width:50px}
+.tgrp .tsel{flex:1;max-width:none}
+input::placeholder{color:#B9BAC2;font-weight:400}
+.tbtn.tpri{background:var(--ink);color:#fff;border-color:var(--ink)}
 .fld.col>span:first-child{font-size:12.5px;color:var(--muted)}
 .tin{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;color:var(--input);font-weight:600;width:100%;background:#fff}
 .derived{font-size:11px;color:var(--primary);font-weight:700;font-variant-numeric:tabular-nums}
@@ -2978,7 +2989,7 @@ function buildModel(p) {
   const constrIns = (epcPV + epcBESS) * (p.constrInsRate / 100);
   const carbonReg = (p.carbonOn ? (p.carbonRegFee || 0) * kRev : 0) * cm;
   const hardCapex = epcPV + epcBESS + line + dev + advisors + otherCapex + esConstr + duties + contingency + constrIns + carbonReg;
-  const successFee = hardCapex * (p.successFeeRate / 100);
+  let successFee = hardCapex * (p.successFeeRate / 100);   // V22 — recomputed in the financing loop (circular on the total project cost)
   // V12.1 — Grant. Pure (NORAD): non-repayable capital subsidy → a SOURCE that reduces the debt+equity raised.
   //         Reimbursable (AfDB SEFA): SEFA funds development study costs; on reaching FC the project reimburses it
   //         from the financing — so it is a USE, part of the project cost, financed at FC by debt+equity (and a
@@ -2986,7 +2997,7 @@ function buildModel(p) {
   const grant0 = p.grantOn ? Math.max(0, p.grantAmount * kCapex) : 0;
   const grantSource = (p.grantOn && p.grantType === "pure") ? grant0 : 0;
   const grantUse = (p.grantOn && p.grantType === "reimbursable") ? grant0 : 0;
-  const baseCost = hardCapex + successFee + grantUse;
+  let baseCost = hardCapex + successFee + grantUse;
   // Input VAT on CapEx: advanced at t0 (equity/short-term bridge, not geared), refunded after a lag;
   // the non-recoverable portion (butoir / non-recoverable treatment / reliability haircut) is a sunk cost.
   // V22 — VAT on CapEx is now a real USE in the funding plan (paid at FC), funded by one of:
@@ -3074,13 +3085,13 @@ function buildModel(p) {
   //   RTE reset to 100% / RTE0). Usable capacity = Σ MWh·SoH; the fleet RTE is the usable-weighted average.
   const bessCap = new Array(N).fill(0), bessRteArr = new Array(N).fill(0), bessSoh = new Array(N).fill(0);
   if (isBess) {
-    const sd = Math.max(0, p.bessSohDeg || 0) / 100, rd = Math.max(0, p.bessRteDeg || 0) / 100, rte0 = (p.bessRTE || 0) / 100;
+    const sd = Math.max(0, p.bessSohDeg || 0) / 100, rd = Math.max(0, p.bessRteDegPct || 0) / 100, rte0 = (p.bessRTE || 0) / 100;   // V22 — RTE degradation in % per year (relative)
     let cohorts = [{ mwh: p.bessMWh, yr: 1 }];
     for (let t = 1; t <= N; t++) {
       if (bessRepYr && t === bessRepYr) cohorts = [{ mwh: p.bessMWh, yr: t }];
       if (augYears.includes(t)) cohorts.push({ mwh: p.bessAugMWh, yr: t });
       let cap = 0, rw = 0;
-      for (const c of cohorts) { const age = t - c.yr; const u = c.mwh * Math.max(0, 1 - sd * age); cap += u; rw += u * Math.max(0.05, rte0 - rd * age); }
+      for (const c of cohorts) { const age = t - c.yr; const u = c.mwh * Math.max(0, 1 - sd * age); cap += u; rw += u * Math.max(0.05, rte0 * (1 - rd * age)); }
       bessCap[t - 1] = cap; bessRteArr[t - 1] = cap > 1e-9 ? rw / cap : rte0; bessSoh[t - 1] = cap / p.bessMWh;
     }
   }
@@ -3250,6 +3261,10 @@ function buildModel(p) {
   //         financed at FC by debt + equity like any project cost — it does NOT reduce the funding need.
   let D = (p.gearing / 100) * baseCost;
   let priDC = 0;   // V22 — debt PRI premium during construction (capitalised, like IDC)
+  // V22 — SHL interest during construction (rolled up into the SHL, capitalised) and bank fees during construction
+  //        (agency + account fees over the construction period). Both are financing costs in the uses.
+  let shlIDC = 0, finCostsC = 0;
+  const bankFeesC = (p.bankFeesConstrOn !== false) ? ((p.agencyFeeAnnual || 0) + (p.acctFeeAnnual || 0)) * Tc : 0;
   let upfront = 0, commitment = 0, idc = 0, dsraInit = 0, totalFunding = baseCost, gearingDebt = D, sculptCap = Infinity, netFunding = baseCost;
   for (let kk = 0; kk < 100; kk++) {
     upfront = D * (p.upfrontFee / 100);
@@ -3258,28 +3273,41 @@ function buildModel(p) {
     priDC = p.priDebtOn ? (D / 2) * (p.priDebtCover / 100) * (p.priDebtRate / 100) * Tc : 0;
     dsraInit = (p.dsraMonths / 12) * annuity(D, iEff, tenor);
     const dsraFund = (p.dsraMode === "lc") ? 0 : dsraInit;
-    totalFunding = baseCost + upfront + commitment + idc + priDC + dsraFund + p.minReserve + vatUses + wcCap;   // baseCost already includes any SEFA reimbursement (a use); V22 — + VAT on CapEx
+    { const eqCashPrev = Math.max(0, totalFunding - D - Math.min(grantSource, totalFunding) - vatFac0 - shlIDC);
+      shlIDC = (p.shlIdcOn !== false) ? (eqCashPrev * (p.shlPct / 100) / 2) * (shlRate / 100) * Tc : 0; }
+    finCostsC = upfront + commitment + idc + shlIDC + bankFeesC + priDC + vatFacIDC;   // total financing costs during construction
+    // Success fee on the TOTAL PROJECT COST incl. financing costs (as in the AEG models, where a macro breaks the
+    // circularity) — solved here by iteration. Option: on hard CapEx only.
+    successFee = (p.successFeeRate / 100) * ((p.successFeeBase === "hard") ? hardCapex : (hardCapex + grantUse + finCostsC));
+    baseCost = hardCapex + successFee + grantUse;
+    totalFunding = baseCost + upfront + commitment + idc + shlIDC + bankFeesC + priDC + dsraFund + p.minReserve + vatUses + wcCap;   // baseCost already includes any SEFA reimbursement (a use); V22 — + VAT on CapEx
     netFunding = Math.max(0, totalFunding - Math.min(grantSource, totalFunding));      // only a PURE grant reduces the raise
     gearingDebt = (p.gearing / 100) * Math.max(0, netFunding - vatNotGeared);          // V22 — VAT funded by facility / equity bridge is outside the gearing base
-    const deprecBase = fixedAssetBase(idc + priDC);
+    const capFin = idc + priDC + shlIDC + bankFeesC;
+    const deprecBase = fixedAssetBase(capFin);
     if (p.repay === "sculpt") {
-      const cf = cfadsProfile(sizingOp, taxDepFor(idc + priDC), deprecBase);
+      const cf = cfadsProfile(sizingOp, taxDepFor(capFin), deprecBase);
       let cap = 0; for (let t = 1; t <= tenor; t++) cap += Math.max(0, cf[t - 1].cfadsBase) / p.sculptDSCR / Math.pow(1 + iEff, t);
       sculptCap = cap;
     } else sculptCap = Infinity;
     const newD = Math.min(gearingDebt, sculptCap);
-    if (Math.abs(newD - D) < 1) { D = newD; break; }
+    if (Math.abs(newD - D) < 1 && kk > 2) { D = newD; break; }
     D = newD;
   }
+  // settle the last pass (success fee / SHL IDC depend on D and equity)
+  { const dsraFund = (p.dsraMode === "lc") ? 0 : dsraInit;
+    totalFunding = baseCost + upfront + commitment + idc + shlIDC + bankFeesC + priDC + dsraFund + p.minReserve + vatUses + wcCap; }
   const grantApplied = Math.min(grantSource, totalFunding);      // pure grant actually absorbed by the funding plan
   const grant = p.grantType === "reimbursable" ? grantUse : grantApplied;   // headline grant amount (for display)
   const dsraFunded = (p.dsraMode === "lc") ? 0 : dsraInit;
-  const equityTotal = totalFunding - D - grantApplied - vatFac0;
-  const shl0 = equityTotal * (p.shlPct / 100);
+  const equityTotal = totalFunding - D - grantApplied - vatFac0;       // incl. the capitalised SHL IDC (non-cash)
+  const equityCash = equityTotal - shlIDC;                             // cash actually injected by the sponsor
+  const shl0 = equityCash * (p.shlPct / 100) + shlIDC;                 // SHL balance at COD = SHL drawn + rolled-up interest
   const financeFees = upfront + commitment;
-  const deprecBase = fixedAssetBase(idc + priDC);
-  const bookArr = bookDASchedule(idc + priDC);     // accounting D&A (P&L)
-  const taxDepArr = taxDepFor(idc + priDC);        // tax base: = book D&A in straight-line, per-asset schedule in declining/accelerated
+  const capFinC = idc + priDC + shlIDC + bankFeesC;   // capitalised financing costs
+  const deprecBase = fixedAssetBase(capFinC);
+  const bookArr = bookDASchedule(capFinC);     // accounting D&A (P&L)
+  const taxDepArr = taxDepFor(capFinC);        // tax base: = book D&A in straight-line, per-asset schedule in declining/accelerated
   const bindGearing = gearingDebt <= sculptCap + 1;
 
   const annPmt = annuity(D, iEff, tenor);
@@ -3330,14 +3358,16 @@ function buildModel(p) {
   const dnwcBase = dnwcSeries(baseOp);   // V11 — change in working capital, base scenario
   // V22 — VAT recovery profile (base scenario). Refund: lump sum after the lag. Offset: the credit is imputed each year
   //        against the net output VAT collected on sales (VAT on VAT-able revenue − input VAT on OpEx), until exhausted.
-  const vatRecArr = new Array(N).fill(0);
+  const vatRecArr = new Array(N).fill(0), vatOutArr = new Array(N).fill(0), vatInOpexArr = new Array(N).fill(0);
   if (vatRecoverable > 0) {
     if (vatRecMode === "offset") {
       let cr = vatRecoverable;
       for (let t = 1; t <= N && cr > 1e-9; t++) {
         const o = baseOp[t - 1];
-        const netOut = (p.vatRate / 100) * Math.max(0, o.revenue * ((p.vatSalesPct ?? 100) / 100) - o.opex);
-        const u = Math.min(cr, netOut); vatRecArr[t - 1] = u; cr -= u;
+        const opexVatable = Math.max(0, o.opex - o.revenue * (p.levyRate / 100));   // levies bear no VAT
+        const outV = (p.vatRate / 100) * o.revenue * ((p.vatSalesPct ?? 100) / 100), inV = (p.vatRate / 100) * opexVatable;
+        vatOutArr[t - 1] = outV; vatInOpexArr[t - 1] = inV;
+        const u = Math.min(cr, Math.max(0, outV - inV)); vatRecArr[t - 1] = u; cr -= u;
       }
     } else if (vatRecoverYr <= N) vatRecArr[vatRecoverYr - 1] = vatRecoverable;
   }
@@ -3372,7 +3402,7 @@ function buildModel(p) {
     //       Financing-linked items (senior/SHL interest, IDC, arrangement/agency/LC fees, DSRA) are excluded by
     //       construction, and the initial outlay is hard CapEx (not base cost / success fee). This is the standard
     //       PF all-equity project cash flow to all capital providers.
-    const vatRec = vatRecArr[t - 1] || 0;
+    const vatRec = vatRecArr[t - 1] || 0, vatOut = vatOutArr[t - 1] || 0, vatInOpex = vatInOpexArr[t - 1] || 0;
     const projectFCF = o.ebitda - o.acctFee - bt.taxU - otherTaxProj - recapex - dNWC + vatRec;   // V22 — VAT recovered (outflow at t0 below)
     rows.push({
       year: t, pvGross: o.pvGross, energySold: o.energySold, discharge: o.discharge, curtailLoss: o.curtailLoss,
@@ -3380,7 +3410,7 @@ function buildModel(p) {
       revCarbon: o.revCarbon, revenue: o.revenue, opex: o.opex, ebitda: o.ebitda, recurFees, deprec: bookArr[t - 1] || 0, taxDep: bt.deprec,
       feeAmort, interest: d.interest, principal: d.principal, seniorDS: d.seniorDS, balStart: d.balStart, dscr,
       cfads, taxU: bt.taxU, recapex, mraContribution, dDSRAcash, dNWC, ar: o.ar, ap: o.ap, nwc: o.nwc, projectFCF,
-      vatRec, dsraBal: dsraNow, priDebt, refiNew: d.refi ? d.refi.newDebt : 0, refiRepaid: d.refi ? d.refi.repaid : 0, refiCost: d.refi ? d.refi.cost : 0, availLoss: o.availLoss, bessCap: o.bessCap, bessSoh: o.bessSoh, bessRte: o.bessRte,
+      vatRec, vatOut, vatInOpex, dsraBal: dsraNow, priDebt, refiNew: d.refi ? d.refi.newDebt : 0, refiRepaid: d.refi ? d.refi.repaid : 0, refiCost: d.refi ? d.refi.cost : 0, availLoss: o.availLoss, bessCap: o.bessCap, bessSoh: o.bessSoh, bessRte: o.bessRte,
     });
   }
 
@@ -3403,7 +3433,7 @@ function buildModel(p) {
      - Tax uses fiscal depreciation (r.taxDep); the P&L uses accounting D&A (r.deprec). Cash tax only. */
   let shlBal = shl0, opCash = 0, mraBal = 0, vatFacBal = vatFac0;
   // V22 — balance-sheet trackers
-  let nbv = fixedAssetBase(idc + priDC), defFee = financeFees, vatRecv = vatRecoverable, cumRE = 0, cumRet = 0;
+  let nbv = fixedAssetBase(capFinC), defFee = financeFees, vatRecv = vatRecoverable, cumRE = 0, cumRet = 0;
   const shareCap = equityTotal - shl0;
   const wcResPath = dnwcSeries(baseOp, true).res;
   const bs0 = { nbv, defFee, vatRecv, ar: 0, dsra: dsraFunded, mra: 0, minRes: p.minReserve, cash: 0, wcRes: wcCap,
@@ -3483,7 +3513,7 @@ function buildModel(p) {
     if (finalYr) { const tot = p.minReserve + mraBal + opCash; reserveRelease = Math.max(0, tot); mraBal = 0; opCash = Math.min(0, tot); }  // funded reserve + unused MRA + any residual cash (a shortfall stays visible)
     // V22 — Partial risk insurance on equity: premium on the covered share of the equity invested, paid by the sponsor
     //        (shareholder level — it reduces the equity IRR, not the SPV accounts).
-    const priEq = (p.priEqOn && t <= (p.priEqYears > 0 ? Math.round(p.priEqYears) : debtEnd)) ? equityTotal * (p.priEqCover / 100) * (p.priEqRate / 100) : 0;
+    const priEq = (p.priEqOn && t <= (p.priEqYears > 0 ? Math.round(p.priEqYears) : debtEnd)) ? equityCash * (p.priEqCover / 100) * (p.priEqRate / 100) : 0;
     const aegFCF = shlIntPay * (1 - p.whtShl / 100) + shlPrinPay + divNet + reserveRelease - priEq;
     r.shlInterest = shlInterest; r.tax = taxL; r.otherTax = otherTax; r.ebt = ebtBook; r.ebit = ebit;
     r.netIncome = netIncome; r.distCash = cashGen; r.shlIntPay = shlIntPay; r.shlPrinPay = shlPrinPay;
@@ -3509,8 +3539,8 @@ function buildModel(p) {
   const lcoeOfftaker = pvE > 0 ? pvPay / pvE : null;
 
   const projSeries = [-(hardCapex + grantUse + vatInput + wcCap), ...rows.map((x) => x.projectFCF)];   // V22 — input VAT out at FC, recoveries in projectFCF   // V12.1 — SEFA reimbursement is a project cost financed at FC
-  const priEqConstr = p.priEqOn ? (equityTotal / 2) * (p.priEqCover / 100) * (p.priEqRate / 100) * Tc : 0;   // V22 — sponsor-paid, during construction
-  const equitySeries = [-equityTotal + successFee - priEqConstr, ...rows.map((x) => x.aegFCF)];
+  const priEqConstr = p.priEqOn ? (equityCash / 2) * (p.priEqCover / 100) * (p.priEqRate / 100) * Tc : 0;   // V22 — sponsor-paid, during construction
+  const equitySeries = [-equityCash + successFee - priEqConstr, ...rows.map((x) => x.aegFCF)];
   // V22 — VAT now flows through the funding plan and the waterfall (no ad-hoc IRR adjustment needed).
   const toUSD = (arr) => arr.map((cf, t) => cf / (p.fx * Math.pow(1 + p.fxDep / 100, t)));
   const dscrs = rows.filter((x) => x.dscr !== null).map((x) => x.dscr);
@@ -3522,7 +3552,7 @@ function buildModel(p) {
   return {
     epcPV, epcBESS, duties, contingency, successFee, hardCapex, baseCost, idc, upfront,
     vatInput, vatRecoverable, vatLost, vatRecoverYr, vatFac0, vatFacIDC, vatUses, vatWriteOff, vatRecTotal, vatFunding, vatRecMode,
-    bs0, epcLump, esConstr, refiYears, debtEnd, wcCap, priDC, priEqConstr, bessUnitCapex, augYears, recapexEvents,
+    bs0, epcLump, esConstr, equityCash, shlIDC, bankFeesC, finCostsC, refiYears, debtEnd, wcCap, priDC, priEqConstr, bessUnitCapex, augYears, recapexEvents,
     commitment, dsraInit, dsraFunded, totalFunding, debt: D, equityTotal, shl0, tenor, shlRate,
     grant, grantUse, grantSource: grantApplied, netFunding,
     sizingDSCR, bindGearing, gearingDebt, sculptCap, pvAC, pvDC, rows,
@@ -3632,9 +3662,9 @@ function applyFiscalDB(rec){
   p.vatCapexShare = (v.vat_solar_exemption==="Yes") ? 30 : 100;
   p.vatRefundMonths = _isn(v.vat_refund_period)? Math.round(v.vat_refund_period) : D.vatRefundMonths;
   // V22 — recovery route and VAT-ability of sales from the DB
-  { const rm=String(v.vat_recovery_mode||""); p.vatRecovery = /offset|non-refundable/i.test(rm) ? "offset" : (/refund/i.test(rm) ? "refund" : D.vatRecovery); }
-  p.vatSalesPct = (v.vat_revenue_treatment==="Exempt") ? 0 : 100;
-  if(v.vat_revenue_treatment==="Zero-rated") p.vatRecovery="refund";   // zero-rated sales: no output VAT to offset against — refund route
+  // Principle (AEG): the CapEx VAT credit is recovered by offset against the VAT collected on sales net of VAT paid on OpEx.
+  p.vatRecovery = "offset";
+  p.vatSalesPct = (v.vat_revenue_treatment==="Exempt"||v.vat_revenue_treatment==="Zero-rated") ? 0 : 100;
   p.vatRecoverPct = (v.vat_capex_treatment==="Taxable non-recoverable") ? 0
                   : (v.vat_butoir==="Yes") ? 60
                   : (v.vat_refund_reliability==="Poor") ? 80
@@ -3659,18 +3689,18 @@ const scol = (irr) => irr == null ? { bg: "#EEE", fg: C.muted } : irr >= TARGET 
 
 const DEFAULTS = {
   name: "Solar Project — Base Case", ccy: "USD", fx: 1, fxDep: 0, capexCcy: "USD", opexCcy: "USD", revCcy: "USD",
-  country: "", city: "", region: "", cod: "",
+  country: "", city: "", region: "", cod: "", offtaker: "", stage: "", aegShare: 100, analyst: "",
   tech: "pv_bess", projectLife: 25, ppaTerm: 25, constructionMonths: 12,
   pvMW: 24, dcac: 1.2, yield: 1550, degY1: 1, degAnnual: 0.5, curtailment: 0, yieldScenario: "P50", p90ratio: 0.96, prodManual: false, prodAnnual: 35000, prodSeries: "",
   yLat: 9.15, yLon: -4.58, yModule: "JinkoJKM640N", yTrack: "single_axis", yGCR: 35, yTilt: 0, yMaxAngle: 55, yAlbedo: 0.18, yGridKm: 0, yGridKv: 33, ySource: "pvgis", yNrelKey: "0n1PxaKibpasxJc2tunGPZUrRILFhBdaluMqRYA7", yProxy: "https://aeg-solar-proxy.lucienkouamekouakou93.workers.dev/",
   yGHI: "", yTAMB: "", yDHI: "",
   plantAvail: 99, gridAvail: 99.5, availInManual: false,
   bessMW: 10, bessMWh: 20, bessMode: "charged_by_pv", bessCycles: 1, bessRTE: 86, bessAvail: 98, billing: "combined",
-  bessSohDeg: 2, bessRteDeg: 0.2, bessFeeOnAvail: true, bessAugOn: false, bessAugFreq: 5, bessAugMWh: 2, bessAugCost: 0, bessAugCostIdx: 0,
+  bessSohDeg: 2, bessRteDegPct: 0.25, bessFeeOnAvail: true, bessAugOn: false, bessAugFreq: 5, bessAugMWh: 2, bessAugCost: 0, bessAugCostIdx: 0,
   epcMode: "lump", pvEpcLump: 15600000, bessEpcLump: 3400000,
   pvCapexPerW: 0.65, bessCapexPerKWh: 170, lineCapex: 0, devCapex: 1000000,
   advisorsCapex: 200000, otherCapex: 0, esConstrCapex: 0, dutyRate: 5, importShare: 70, contingencyRate: 5,
-  constrInsRate: 1, successFeeRate: 2.5,
+  constrInsRate: 1, successFeeRate: 2.5, successFeeBase: "total", shlIdcOn: true, bankFeesConstrOn: true,
   recapexPV: 0, recapexPVYear: 12, recapexBESS: 0, recapexBESSYear: 12, mraYearsBefore: 0,
   omPV: 250000, omBESS: 0, assetMgmt: 100000, opexIns: 112000, opexES: 50000, opexLand: 50, opexOther: 50000, opexIdx: 2.5, levyRate: 0,
   omSplit: false, omShortYears: 2, omPVShort: 250000, omBESSShort: 0,
@@ -3689,7 +3719,7 @@ const DEFAULTS = {
   itcOn: false, itcRate: 0, itcYears: 0,
   thincapOn: false, thincapMethod: "dual", thincapEbitdaPct: 30, thincapDeRatio: 1.5, thincapProfitPct: 25, thincapAppliesTo: "shl",
   vatOn: false, vatRate: 18, vatCapexShare: 100, vatRecoverPct: 100, vatRefundMonths: 6, vatFacility: false, vatFacilityRate: 8,
-  vatFunding: "debtEquity", vatRecovery: "refund", vatSalesPct: 100,
+  vatFunding: "debtEquity", vatRecovery: "offset", vatSalesPct: 100,
   whtInt: 0, whtDiv: 0, whtShl: 0, deprecYears: 25, discount: 10,
   depMethod: "sl", depAccel: false, depInitAllow: 0, depPvRate: 4, depBessRate: 6.67, depLineRate: 4, bookLife: 25,
   opCashMin: 0,
@@ -3701,7 +3731,7 @@ const LIM = {
   pvMW:[0,1e5], dcac:[0.5,2.5], yield:[0,4000], degY1:[0,20], degAnnual:[0,10], curtailment:[0,100], p90ratio:[0.5,1], prodAnnual:[0,1e9],
   yLat:[-60,60], yLon:[-180,180], yGCR:[10,70], yTilt:[0,45], yMaxAngle:[30,70], yAlbedo:[0.05,0.9], yGridKm:[0,500], yGridKv:[1,800],
   bessMW:[0,1e5], bessMWh:[0,1e6], bessCycles:[0,5], bessRTE:[1,100], bessAvail:[0,100],
-  plantAvail:[50,100], gridAvail:[50,100], bessSohDeg:[0,10], bessRteDeg:[0,5], bessAugFreq:[1,40], bessAugMWh:[0,1e6], bessAugCost:[0,5000], bessAugCostIdx:[-20,20],
+  plantAvail:[50,100], gridAvail:[50,100], bessSohDeg:[0,10], bessRteDegPct:[0,5], bessAugFreq:[1,40], bessAugMWh:[0,1e6], bessAugCost:[0,5000], bessAugCostIdx:[-20,20],
   pvEpcLump:[0,1e12], bessEpcLump:[0,1e12], vatSalesPct:[0,100],
   pvCapexPerW:[0,10], bessCapexPerKWh:[0,5000], lineCapex:[0,1e12], devCapex:[0,1e12], advisorsCapex:[0,1e12], otherCapex:[0,1e12],
   dutyRate:[0,100], importShare:[0,100], contingencyRate:[0,100], constrInsRate:[0,100], successFeeRate:[0,100],
@@ -3727,7 +3757,7 @@ const clampVal = (k,x)=>{
   if(k==="tariffCt"){ const r=(CCYS[p.revCcy]||1); const hi=500*r; return Math.min(Math.max(x,0),hi); } // ~USD 5/kWh ceiling, scaled to the revenue currency
   const L=LIM[k]; return L? Math.min(Math.max(x,L[0]),L[1]) : x;
 };
-const state = { p: { ...DEFAULTS }, itab: "overview", otab: "pnl", groups: {}, twoWayRow: "tariffCt", twoWayCol: "capex", twoWayMetric: "eqIRR", hideCumul: false, yieldEst: null };
+const state = { p: { ...DEFAULTS }, itab: "overview", otab: "pnl", groups: {}, twoWayRow: "tariffCt", twoWayCol: "capex", twoWayMetric: "eqIRR", hideCumul: true, yieldEst: null };
 const p = state.p;
 const esc = (s) => String(s).replace(/"/g,"&quot;").replace(/</g,"&lt;");
 
@@ -3847,7 +3877,7 @@ const TIP = {
  priEqCover:"Share of the equity invested covered by the insurance.",priEqRate:"All-in annual premium, % of the covered equity.",priEqYears:"Years of operation covered; 0 = the senior debt tenor.",
  plantAvail:"Technical availability of the plant (PV side): share of the year the plant can generate. Typical 98.5–99.5% (O&M guarantee).",
  gridAvail:"Availability of the grid / evacuation line: share of the energy the network can take. In weak grids it can be well below 99%.",
- bessRteDeg:"Annual loss of round-trip efficiency, in percentage points per year of age of each block (e.g. 0.2 pt/yr).",
+ bessRteDegPct:"Annual loss of round-trip efficiency, in % of the initial RTE per year of age of each block (e.g. 0.25%/yr: 86% → 85.8% after one year).",
  bessSohDeg:"Annual loss of usable capacity (state of health), % of nameplate per year of age (e.g. 2%/yr for LFP at 1 cycle/day).",
  bessFeeOnAvail:"If on, the capacity fee is paid on the usable capacity (capped at the contracted MWh), so degradation reduces revenue unless offset by augmentation.",
  bessAugFreq:"An augmentation event every N years (years N, 2N, 3N, ... within the operating life).",bessAugMWh:"Energy capacity (MWh) added at each augmentation event.",
@@ -3865,28 +3895,51 @@ function inputsHTML() {
   const TABS = [["overview","Overview"],["prod","Project & Production"],["capex","CapEx"],["opex","OpEx"],["rev","Revenue"],["fin","Financing"],["tax","Tax & FX"]];
   let tabbar = '<div class="itabs">' + TABS.map(([id,l]) =>
     '<button class="itab'+(state.itab===id?" on":"")+'" onclick="setItab(\''+id+'\')">'+l+'</button>').join('') + '</div>';
-  let tools = '<div class="tools">'
-    + '<button class="tbtn" onclick="saveLocal()">Save</button>'
-    + '<select class="tsel" onchange="loadLocal(this.value);this.selectedIndex=0"><option value="">My projects...</option>'+savedProjects().map(x=>'<option value="'+x+'">'+x.slice(6)+'</option>').join('')+'</select>'
-    + (savedProjects().length?'<button class="tbtn" onclick="deleteLocal()">Delete…</button>':'')
-    + '<button class="tbtn" onclick="exportJSON()">Export</button>'
-    + '<button class="tbtn" onclick="exportCSV()">CSV</button>'
-    + '<label class="tbtn"><span>Import</span><input type="file" accept=".json" style="display:none" onchange="importJSON(event)"></label>'
-    + '</div>';
-  let head = '<div class="card pad2"><input class="nameinput" value="'+esc(p.name)+'" oninput="setName(this.value)">'+tools+tabbar+'</div>';
+  const hasSaved = savedProjects().length>0;
+  let tools = '<div class="tbar">'
+    + '<div class="tgrp"><span class="tgl">Project</span>'
+    +   '<button class="tbtn tpri" onclick="saveLocal()">Save</button>'
+    +   '<select class="tsel" onchange="loadLocal(this.value);this.selectedIndex=0"><option value="">Open…</option>'+savedProjects().map(x=>'<option value="'+x+'">'+esc(x.slice(6))+'</option>').join('')+'</select>'
+    +   (hasSaved?'<button class="tbtn" onclick="deleteLocal()" title="Delete a saved project">Delete</button>':'')
+    + '</div>'
+    + '<div class="tgrp"><span class="tgl">File</span>'
+    +   '<label class="tbtn" title="Open a .bpsim.json file"><span>Import</span><input type="file" accept=".json" style="display:none" onchange="importJSON(event)"></label>'
+    +   '<button class="tbtn" onclick="exportJSON()" title="Download the inputs as a .bpsim.json file">Export</button>'
+    +   '<button class="tbtn" onclick="exportCSV()" title="Download the statements as CSV">CSV</button>'
+    + '</div></div>';
+  let head = '<div class="card pad2"><div class="namerow"><input class="nameinput" value="'+esc(p.name)+'" oninput="setName(this.value)" title="Project name (used when saving)"><div id="saveStat" class="sstat">'+saveStatusHTML()+'</div></div>'+tools+tabbar+'</div>';
 
   let s = "";
   const t = state.itab;
   if (t==="overview") {
+    const ovT=(label,key,tip,ph)=>'<label class="fld ov"><span>'+label+(tip?infoTip(tip):'')+'</span><span class="ig"><input type="text" value="'+esc(p[key]||"")+'" placeholder="'+(ph||"")+'" oninput="setText(\''+key+'\',this.value)"></span></label>';
+    const ovS=(label,tip,html)=>'<label class="fld ov"><span>'+label+(tip?infoTip(tip):'')+'</span><span class="ig">'+html+'</span></label>';
     s += sub("Project identity");
-    s += '<label class="fld col"><span>Country'+infoTip("Selecting a country pre-fills the applicable taxes and currency (indicative defaults - to be validated).")+'</span><select class="tin" onchange="setCountry(this.value)"><option value="">- select -</option>'
-       + fiscalNames().map(c=>'<option'+(p.country===c?" selected":"")+'>'+esc(c)+'</option>').join('')+'</select></label>';
-    s += '<label class="fld"><span>Model currency'+infoTip("Reporting currency of the financial statements. CapEx / OpEx / Revenue can be entered in other currencies and are converted here.")+'</span><span class="ig"><select onchange="setCcy(this.value)">'
-      + Object.keys(CCYS).map(c=>'<option value="'+c+'"'+(p.ccy===c?" selected":"")+'>'+c+'</option>').join('')+'</select></span></label>';
-    s += textField("City / commune","city","Project host city or commune.")+textField("Region / site","region","Region, district or site.");
-    s += dateField("Commercial Operations Date","cod","Target COD.");
-    s += sub("Sponsor");
-    s += help("Shareholding: AEG 100%.");
+    s += ovS("Country","Selecting a country pre-fills taxes, levies and customs from the AEG fiscal database (indicative — to be validated).",
+          '<select onchange="setCountry(this.value)"><option value="">— select —</option>'+fiscalNames().map(c=>'<option'+(p.country===c?" selected":"")+'>'+esc(c)+'</option>').join('')+'</select>');
+    s += ovT("City / commune","city","Project host city or commune.");
+    s += ovT("Region / site","region","Region, district or site.");
+    s += ovT("Offtaker","offtaker","Buyer of the energy / capacity (utility, mine, C&I client).","e.g. KPLC");
+    s += ovS("Project stage","Development stage — printed on the committee one-pager.",
+          '<select onchange="setSel(\'stage\',this.value)">'+["","Origination","Early development","Late development","Tender / bid","Pre-financial close","Construction","Operation"].map(v=>'<option value="'+v+'"'+(p.stage===v?" selected":"")+'>'+(v||"— select —")+'</option>').join('')+'</select>');
+    s += ovS("Commercial Operations Date","Target COD.",'<input type="date" value="'+esc(p.cod||"")+'" oninput="setText(\'cod\',this.value)">');
+    s += ovS("Model currency","Reporting currency of the statements. CapEx / OpEx / Revenue can be entered in other currencies and are converted.",
+          '<select onchange="setCcy(this.value)">'+Object.keys(CCYS).map(c=>'<option value="'+c+'"'+(p.ccy===c?" selected":"")+'>'+c+'</option>').join('')+'</select>');
+    s += sub("Sponsor &amp; team");
+    s += ovS("AEG shareholding","Informational — printed on the one-pager. The model shows 100% of the equity cash flows.",'<input type="number" min="0" max="100" step="1" value="'+(p.aegShare??100)+'" oninput="setText(\'aegShare\',+this.value)" style="text-align:right">');
+    s += ovT("Prepared by","analyst","Analyst / project manager.");
+    // snapshot (read-only)
+    { const _m=buildModel(p), _K=_m.kpis;
+      s += sub("Snapshot");
+      s += derivedRow("Technology", p.tech==="pv_bess"?"PV + BESS":"PV only");
+      s += derivedRow("PV capacity", nf1.format(p.pvMW)+" MWdc · "+nf1.format(p.pvMW/(p.dcac||1))+" MWac");
+      if (p.tech==="pv_bess") s += derivedRow("BESS", nf1.format(p.bessMW)+" MW · "+nf1.format(p.bessMWh)+" MWh");
+      s += derivedRow("Operating life · PPA", Math.round(p.projectLife)+" yrs · "+Math.round(p.ppaTerm)+" yrs");
+      s += derivedRow("Total uses · Hard CapEx", M(_m.totalFunding)+"M · "+M(_m.hardCapex)+"M "+p.ccy);
+      s += derivedRow("Debt · Equity", M(_m.debt)+"M · "+M(_m.equityCash)+"M");
+      s += derivedRow("Equity IRR · Project IRR", pct(_K.eqIRR)+" · "+pct(_K.projIRR));
+      s += derivedRow("Min DSCR · LCOE offtaker", xd(_K.minDSCR)+" · "+nf1.format(_K.lcoeOfftaker/10)+" ct/kWh");
+    }
     if (p.country) { const _rec = fiscalRec(p.country); if (_rec) s += fiscalBanner(_rec); }
   }
   if (t==="prod") {
@@ -3923,7 +3976,7 @@ function inputsHTML() {
       if (!p.prodManual){
         s += '<div class="chips">'+chip("bessMode","charged_by_pv","Charged by PV")+chip("bessMode","standalone","Standalone")+'</div>';
         s += field("Cycles / day","bessCycles","#")+field("Round-trip efficiency (BoL)","bessRTE","%")+field("Availability","bessAvail","%");
-        s += field("RTE degradation","bessRteDeg","pts/yr");
+        s += field("RTE degradation","bessRteDegPct","%/yr");
         s += help("Billed energy:");
         s += '<div class="chips">'+chip("billing","combined","Combined PV+BESS")+chip("billing","pv_gross","Total PV output")+'</div>';
       } else {
@@ -3953,6 +4006,8 @@ function inputsHTML() {
     s += field("Development","devCapex",p.capexCcy,"10000")+field("Advisors (OE/LTA)","advisorsCapex",p.capexCcy,"10000")+field("Other (site, reg.)","otherCapex",p.capexCcy,"10000")+field("E&amp;S during construction","esConstrCapex",p.capexCcy,"10000");
     s += sub("Applied rates");
     s += field("Customs duties","dutyRate","%")+field("Import share (of EPC)","importShare","%")+field("Contingency","contingencyRate","%")+field("Construction insurance","constrInsRate","%")+field("Success dev fee","successFeeRate","%");
+    s += seg("successFeeBase",[["total","on total project cost"],["hard","on hard CapEx"]]);
+    s += help(p.successFeeBase==="hard" ? "Success fee = rate &times; hard CapEx." : "Success fee = rate &times; total project cost (hard CapEx + financing costs: fees, IDC senior &amp; SHL, bank fees, PRI) — circular, solved by iteration (the AEG models break it with a macro).");
     { let g = field("Re-capex PV","recapexPV",p.capexCcy,"10000")+field("Re-capex PV year","recapexPVYear","yr","1");
       if (p.tech==="pv_bess") {
         g += field("Re-capex BESS (full replacement)","recapexBESS",p.capexCcy,"10000")+field("Re-capex BESS year","recapexBESSYear","yr","1");
@@ -4038,6 +4093,7 @@ function inputsHTML() {
     s += sub("Fees &amp; reserves");
     s += field("Upfront fee","upfrontFee","% debt")+field("Commitment fee","commitmentFee","%/yr");
     s += field("Agency fee","agencyFeeAnnual",p.ccy+"/yr","5000");
+    s += toggleRow("bankFeesConstrOn","Bank fees also during construction");
     s += '<div class="help">Debt service reserve</div>';
     s += seg("dsraMode",[["cash","Cash DSRA"],["lc","LC (bank guarantee)"]]);
     s += field("DSRA size","dsraMonths","months","1");
@@ -4077,6 +4133,7 @@ function inputsHTML() {
       s += collapse("fin_pri","Partial risk insurance (PRI)", g, p.priDebtOn||p.priEqOn, (p.priDebtOn||p.priEqOn)?"on":""); }
     s += sub("Shareholder loan (SHL)");
     s += field("SHL share (of equity)","shlPct","%");
+    s += toggleRow("shlIdcOn","SHL interest during construction (IDC, capitalised)");
     s += toggleRow("shlRateAuto","Auto SHL rate = debt + 1%");
     if (p.shlRateAuto!==false) s += derivedRow("SHL rate (auto)", nf1.format(effShlRate(p))+" %", "shlDerived");
     else s += field("SHL rate","shlRate","%");
@@ -4129,7 +4186,7 @@ function inputsHTML() {
         g += seg("vatFunding",[["debtEquity","Debt + equity"],["facility","VAT facility"],["equity","Equity only"]]);
         if (p.vatFunding==="facility") g += field("VAT facility rate","vatFacilityRate","%");
         g += '<div class="help">Recovery</div>';
-        g += seg("vatRecovery",[["refund","Refund (cash)"],["offset","Offset vs output VAT"]]);
+        g += seg("vatRecovery",[["offset","Offset vs VAT on sales (standard)"],["refund","Refund (lump sum)"]]);
         if (p.vatRecovery==="offset") g += field("VAT-able share of sales","vatSalesPct","%");
         else g += field("Refund lag","vatRefundMonths","months","1");
         g += help("Input VAT is a <b>use</b> at financial close. "
@@ -4209,27 +4266,31 @@ function stackedChart(rows, bars, lines) {
 
 /* V11 — coverage-ratios chart: DSCR (per-year) + LLCR + PLCR over the debt tenor, with covenant lines */
 function coverageChart(rows){
+  // V22 — easier to read: DSCR as bars, LLCR as a solid line, PLCR as a dashed line; the axis is capped so the PLCR
+  //        tail (which explodes as the debt runs off) no longer crushes everything — capped points get an arrow.
   const yrs = rows.filter(r=>r.balStart>1e-6 && (r.dscr!=null||r.llcr!=null||r.plcr!=null));
   const n = yrs.length; if(!n) return '<div class="help">No debt outstanding — coverage ratios not applicable.</div>';
-  const W=720,H=210,mL=56,mR=40,mT=10,mB=20;   // V12 — match the other charts' geometry so stroke/zoom weight is consistent
-  const all=[]; yrs.forEach(r=>{ [r.dscr,r.llcr,r.plcr].forEach(v=>{ if(v!=null&&isFinite(v)) all.push(v); }); });
-  all.push(p.sculptDSCR||1.2, p.lockupDSCR||1.1, 1);
-  const hi0=Math.max(...all,1.4); const tk=AXT(0,hi0,5); const hi=tk[tk.length-1];
-  const xw=(W-mL-mR)/n, cx=i=>mL+xw*(i+0.5), yy=v=>mT+(H-mT-mB)*(1-v/hi);
-  let grid='',axL=''; tk.forEach(t=>{const y=yy(t);grid+='<line x1="'+mL+'" y1="'+y.toFixed(1)+'" x2="'+(W-mR)+'" y2="'+y.toFixed(1)+'" stroke="'+C.line+'"/>';axL+='<text x="'+(mL-5)+'" y="'+(y+3).toFixed(1)+'" font-size="9" fill="'+C.muted+'" text-anchor="end">'+t.toFixed(1)+'x</text>';});
-  // reference lines: target DSCR (sizing) and lock-up DSCR
-  const refLine=(v,col,lbl)=>{ if(v==null||!isFinite(v)) return ''; const y=yy(v); return '<line x1="'+mL+'" y1="'+y.toFixed(1)+'" x2="'+(W-mR)+'" y2="'+y.toFixed(1)+'" stroke="'+col+'" stroke-dasharray="5 3" stroke-width="1"/><text x="'+(W-mR)+'" y="'+(y-3).toFixed(1)+'" font-size="8.5" fill="'+col+'" text-anchor="end">'+lbl+'</text>'; };
-  let refs=''; if(p.repay==="sculpt") refs+=refLine(p.sculptDSCR,C.muted,"target "+nf1.format(p.sculptDSCR)+"x"); refs+=refLine(p.lockupDSCR,C.accent,"lock-up "+nf1.format(p.lockupDSCR)+"x");
-  const line=(key,col,dash)=>{ const pts=yrs.map((r,i)=>r[key]==null?null:cx(i).toFixed(1)+","+yy(r[key]).toFixed(1)).filter(Boolean).join(" "); return '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2"'+(dash?' stroke-dasharray="4 2"':'')+'/>'; };
-  const dots=(key,col)=>yrs.map((r,i)=>r[key]==null?'':'<circle cx="'+cx(i).toFixed(1)+'" cy="'+yy(r[key]).toFixed(1)+'" r="2.3" fill="'+col+'"/>').join('');
-  let xl=''; yrs.forEach((r,i)=>{ if(i%2===0||i===n-1) xl+='<text x="'+cx(i).toFixed(1)+'" y="'+(H-6)+'" font-size="8.5" fill="'+C.muted+'" text-anchor="middle">Y'+r.year+'</text>'; });
-  const tips=yrs.map(r=>tipEsc('Y'+r.year+'<br>DSCR: '+(r.dscr==null?'—':xd(r.dscr))+'<br>LLCR: '+(r.llcr==null?'—':xd(r.llcr))+'<br>PLCR: '+(r.plcr==null?'—':xd(r.plcr))));
-  const bands=hoverBands(mL,mT,H,mB,xw,n,tips);
-  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:210px">'+grid+axL+refs
-    + line("dscr",C.neg)+dots("dscr",C.neg)
-    + line("llcr",C.primary)+dots("llcr",C.primary)
-    + line("plcr",C.ink,1)+dots("plcr",C.ink)
-    + xl+bands+'</svg>';
+  const W=460,H=250,mL=40,mR=10,mT=14,mB=22;   // drawn at (about) its displayed size so labels stay readable
+  const core=[]; yrs.forEach(r=>{ [r.dscr,r.llcr].forEach(v=>{ if(v!=null&&isFinite(v)) core.push(v); }); });
+  core.push(p.sculptDSCR||1.2, p.lockupDSCR||1.1);
+  const cap=Math.max(2, Math.ceil((Math.max(...core)*1.35)*2)/2);        // headroom above DSCR/LLCR, in 0.5x steps
+  const tk=AXT(0,cap,5); const hi=tk[tk.length-1];
+  const xw=(W-mL-mR)/n, cx=i=>mL+xw*(i+0.5), yy=v=>mT+(H-mT-mB)*(1-Math.min(v,hi)/hi);
+  let g='';
+  tk.forEach(t=>{const y=yy(t).toFixed(1); g+='<line x1="'+mL+'" y1="'+y+'" x2="'+(W-mR)+'" y2="'+y+'" stroke="'+C.line+'"/><text x="'+(mL-6)+'" y="'+(+y+3)+'" font-size="10" fill="'+C.muted+'" text-anchor="end">'+t.toFixed(1)+'x</text>';});
+  // DSCR bars
+  yrs.forEach((r,i)=>{ if(r.dscr==null) return; const y=yy(r.dscr), h=(H-mB)-y; g+='<rect x="'+(cx(i)-xw*0.32).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(xw*0.64).toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" fill="'+C.primary+'" opacity="0.28" rx="1.5"/>'; });
+  // covenant lines, labelled on the left inside the plot
+  const ref=(v,col,lbl,right)=>{ if(v==null||!isFinite(v)) return ''; const y=yy(v).toFixed(1); return '<line x1="'+mL+'" y1="'+y+'" x2="'+(W-mR)+'" y2="'+y+'" stroke="'+col+'" stroke-dasharray="5 3" stroke-width="1.2"/><text x="'+(right?(W-mR-4):(mL+4))+'" y="'+(right?(+y+11):(y-3))+'" font-size="9.5" fill="'+col+'" font-weight="700" text-anchor="'+(right?'end':'start')+'" paint-order="stroke" stroke="#fff" stroke-width="3">'+lbl+'</text>'; };
+  if(p.repay==="sculpt") g+=ref(p.sculptDSCR,C.muted,"Target DSCR "+nf2.format(p.sculptDSCR)+"x");
+  g+=ref(p.lockupDSCR,C.accent,"Lock-up "+nf2.format(p.lockupDSCR)+"x",1);
+  const line=(key,col,dash,w)=>{ const pts=yrs.map((r,i)=>r[key]==null?null:cx(i).toFixed(1)+","+yy(r[key]).toFixed(1)).filter(Boolean).join(" "); return '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="'+(w||2.2)+'"'+(dash?' stroke-dasharray="5 3"':'')+' stroke-linejoin="round"/>'; };
+  g+=line("plcr",C.accent,1,1.8)+line("llcr",C.ink,0,2.4);
+  yrs.forEach((r,i)=>{ if(r.dscr!=null) g+='<circle cx="'+cx(i).toFixed(1)+'" cy="'+yy(r.dscr).toFixed(1)+'" r="2.6" fill="'+C.primary+'"/>';
+    if(r.plcr!=null && r.plcr>hi) g+='<text x="'+cx(i).toFixed(1)+'" y="'+(mT+2)+'" font-size="9" fill="'+C.accent+'" text-anchor="middle">▲</text>'; });
+  let xl=''; const step=n>12?3:2; yrs.forEach((r,i)=>{ if(i%step===0||i===n-1) xl+='<text x="'+cx(i).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="'+C.muted+'" text-anchor="middle">Y'+r.year+'</text>'; });
+  const tips=yrs.map(r=>tipEsc('Y'+r.year+'<br>DSCR: '+(r.dscr==null?'—':nf2.format(r.dscr)+'x')+'<br>LLCR: '+(r.llcr==null?'—':nf2.format(r.llcr)+'x')+'<br>PLCR: '+(r.plcr==null?'—':nf2.format(r.plcr)+'x')));
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;max-height:280px">'+g+xl+hoverBands(mL,mT,H,mB,xw,n,tips)+'</svg>';
 }
 /* radar / star chart for multi-criteria IRR stress */
 function radarSVG(drivers, base){
@@ -4278,7 +4339,8 @@ function tornadoSVG(drivers, base){
 /* ---------------- STATEMENT ROWS ---------------- */
 function trow(label, vals, o) {
   o=o||{}; const fmt=o.fmt||k;
-  const tds=vals.map(v=>{const neg=o.sign&&typeof v==="number"&&v<0;const col=neg?C.neg:(o.accent?C.primary:C.text);const txt=typeof v==="number"?fmt(v):v;return '<td class="num" style="color:'+col+';font-weight:'+(o.strong?700:400)+'">'+txt+'</td>';}).join('');
+  const tds=vals.map(v=>{const neg=o.sign&&typeof v==="number"&&v<0;const col=o.memo?C.muted:(neg?C.neg:(o.accent?C.primary:C.text));const txt=typeof v==="number"?fmt(v):v;return '<td class="num" style="color:'+col+';font-weight:'+(o.strong?700:400)+(o.memo?';font-style:italic':'')+'">'+txt+'</td>';}).join('');
+  if(o.memo) return '<tr><td class="lbl" style="color:'+C.muted+';font-style:italic;font-size:10.5px">'+label+'</td>'+tds+'</tr>';
   const lblbg=o.strong?C.primarySoft:"#fff";
   return '<tr'+(o.strong?' style="background:'+C.primarySoft+'"':'')+'><td class="lbl" style="background:'+lblbg+';color:'+(o.accent?C.primary:C.text)+';font-weight:'+(o.strong||o.accent?700:400)+'">'+label+'</td>'+tds+'</tr>';
 }
@@ -4375,7 +4437,7 @@ function onePagerHTML(m, S, K, effG){
     ["Interest", pct(irrOf({interest:p.interest+1})), pct(irrOf({interest:Math.max(0,p.interest-1)}))],
   ];
   const sensRows=sens.map(s=>'<div class="oprow"><span>'+s[0]+'</span><b>'+s[1]+' &nbsp;/&nbsp; '+s[2]+'</b></div>').join('');
-  const idn=[p.tech==="pv_bess"?"PV + BESS":"PV only", nf1.format(p.pvMW)+" MWdc"+(p.tech==="pv_bess"?" · "+nf.format(p.bessMW)+"/"+nf.format(p.bessMWh)+" MW/MWh":""), p.country||"—", (p.cod||"COD n/a")].join(" · ");
+  const idn=[p.tech==="pv_bess"?"PV + BESS":"PV only", nf1.format(p.pvMW)+" MWdc"+(p.tech==="pv_bess"?" · "+nf.format(p.bessMW)+"/"+nf.format(p.bessMWh)+" MW/MWh":""), p.country||"—", (p.offtaker?"Offtaker: "+p.offtaker:""), (p.stage||""), "AEG "+(p.aegShare??100)+"%", (p.cod||"COD n/a")].filter(Boolean).join(" · ");
   let h='<div class="op1" id="onepager">';
   h+='<div class="printhint">Committee one-pager — use your browser Print (Ctrl/Cmd+P) to save as PDF. '
     + '<button class="tbtn" onclick="window.print()">Imprimer / PDF</button></div>';
@@ -4451,14 +4513,19 @@ function resultsHTML() {
   // financing plan: sources vs uses
   out += '<div class="box fullbox"><div class="boxt">Financing plan ('+p.ccy+') — Sources & Uses</div><div class="suGrid">'
     + '<div><div class="suh">Uses</div>'
-      + su("Hard CapEx", M(m.hardCapex)+"M") + su("Success dev fee", k(m.successFee)+"k")
+      + su("Hard CapEx", M(m.hardCapex)+"M")
       + (p.grantOn && p.grantType==="reimbursable" && m.grantUse>0 ? su("SEFA reimbursement (dev, at FC)", k(m.grantUse)+"k") : "")
+      + su("Success dev fee ("+p.successFeeRate+"% of "+(p.successFeeBase==="hard"?"hard CapEx":"total cost")+")", k(m.successFee)+"k")
+      + su("<b>Financing costs</b>", k(m.finCostsC)+"k")
+      + su("&nbsp;&middot; upfront + commitment fees", k(m.upfront+m.commitment)+"k")
+      + su("&nbsp;&middot; IDC senior debt", k(m.idc)+"k")
+      + (m.shlIDC>0 ? su("&nbsp;&middot; IDC shareholder loan (capitalised)", k(m.shlIDC)+"k") : "")
+      + (m.bankFeesC>0 ? su("&nbsp;&middot; bank fees during construction", k(m.bankFeesC)+"k") : "")
+      + (m.priDC>0 ? su("&nbsp;&middot; debt PRI premium (constr.)", k(m.priDC)+"k") : "")
+      + (m.vatFacIDC>0 ? su("&nbsp;&middot; VAT facility interest (constr.)", k(m.vatFacIDC)+"k") : "")
       + (m.vatInput>0 ? su("VAT on CapEx (input VAT)", k(m.vatInput)+"k") : "")
-      + (m.vatFacIDC>0 ? su("VAT facility interest (constr.)", k(m.vatFacIDC)+"k") : "")
-      + su("IDC (interest during constr.)", k(m.idc)+"k")
-      + (m.priDC>0 ? su("Debt PRI premium (constr.)", k(m.priDC)+"k") : "")
       + (m.wcCap>0 ? su("Initial working capital", k(m.wcCap)+"k") : "")
-      + su("Upfront + commitment fees", k(m.upfront+m.commitment)+"k") + su(p.dsraMode==="lc"?"DSRA (via LC — no cash)":"DSRA (cash)", k(m.dsraFunded)+"k") + su("Min cash reserve", k(p.minReserve)+"k")
+      + su(p.dsraMode==="lc"?"DSRA (via LC — no cash)":"DSRA (cash)", k(m.dsraFunded)+"k") + su("Min cash reserve", k(p.minReserve)+"k")
       + su("Total uses", M(m.totalFunding)+"M", 1) + '</div>'
     + '<div><div class="suh">Sources</div>'
       + su("Senior debt ("+(m.bindGearing?p.gearing+"%":"sculpted "+nf1.format(effGearing)+"%")+")", M(m.debt)+"M")
@@ -4466,6 +4533,7 @@ function resultsHTML() {
       + (p.repay==="sculpt"&&m.sizingDSCR?su("&nbsp;&middot; sculpted DSCR (P90)", nf2.format(m.sizingDSCR)+"x flat"):"")
       + (m.vatFac0>0 ? su("VAT facility (recoverable VAT)", k(m.vatFac0)+"k") : "")
       + su("Equity + SHL (AEG)", M(m.equityTotal)+"M")
+      + (m.shlIDC>0 ? su("&nbsp;&middot; of which SHL IDC rolled up (non-cash)", k(m.shlIDC)+"k") : "")
       + su("&nbsp;&middot; of which SHL ("+p.shlPct+"%)", M(m.shl0)+"M")
       + (p.grantOn && p.grantType==="pure" && m.grant>0 ? su("Grant (non-repayable)", M(m.grant)+"M") : "")
       + su("Total sources", M(m.totalFunding)+"M", 1)
@@ -4485,10 +4553,10 @@ function resultsHTML() {
         [{key:"dscr",color:C.neg,axis:"right",dash:1,name:"DSCR"}])
     + legend([["Interest",C.grey],["Principal",C.primary],["DSCR (right)",C.neg]])+'</div>';
   out += '<div class="card chartcard"><div class="boxt">Coverage ratios — DSCR · LLCR · PLCR</div>'+coverageChart(R)
-    + legend([["DSCR",C.neg],["LLCR",C.primary],["PLCR",C.ink]])+'</div>';
+    + legend([["DSCR (bars)",C.primary],["LLCR",C.ink],["PLCR (dashed, ▲ = above scale)",C.accent]])+'</div>';
   out += '<div class="card chartcard"><div class="boxt">Shareholder cash flow (k'+p.ccy+') &amp; DSCR'
     + '<button class="tbtn" style="float:right;font-size:10px;padding:2px 7px" onclick="toggleCumul()">'+(state.hideCumul?"Show cumulative":"Hide cumulative")+'</button></div>'
-    + chartSVG(R,m.equityTotal,state.hideCumul)
+    + chartSVG(R,m.equityCash-m.successFee+m.priEqConstr,state.hideCumul)
     + legend(state.hideCumul?[["Annual flow",C.primary],["DSCR (right)",C.neg]]:[["Annual flow",C.primary],["Cumulative",C.ink],["DSCR (right)",C.neg]])+'</div>';
   out += '</div>';
   // output tabs
@@ -4514,12 +4582,12 @@ function resultsHTML() {
       body += sec("Funding at financial close")
         + trow("Senior debt drawdown",[m.debt,...Z],{})
         + (facOn?trow("VAT facility drawdown",[m.vatFac0,...Z],{}):"")
-        + trow("Equity injection (share capital + SHL)",[m.equityTotal,...Z],{})
+        + trow("Equity injection — cash (share capital + SHL)",[m.equityCash,...Z],{})
         + ((p.grantOn&&p.grantType==="pure"&&m.grant>0)?trow("Grant (non-repayable)",[m.grant,...Z],{}):"")
         + trow("Hard CapEx",[-m.hardCapex,...Z],{sign:1})
         + (vatOn?trow("VAT on CapEx (input VAT paid)",[-m.vatInput,...Z],{sign:1}):"")
         + ((p.grantOn&&p.grantType==="reimbursable"&&m.grantUse>0)?trow("SEFA reimbursement (dev, at FC)",[-m.grantUse,...Z],{sign:1}):"")
-        + trow("Financing fees, IDC & reserves",[-(m.idc+m.upfront+m.commitment+m.dsraFunded+p.minReserve+m.vatFacIDC+m.priDC),...Z],{sign:1})
+        + trow("Financing fees, IDC, bank fees & reserves (cash)",[-(m.idc+m.upfront+m.commitment+m.bankFeesC+m.dsraFunded+p.minReserve+m.vatFacIDC+m.priDC),...Z],{sign:1})
         + (m.wcCap>0?trow("Initial working capital (funded reserve)",[-m.wcCap,...Z],{sign:1}):"")
         + trow("Success fee to sponsor (COD)",[-m.successFee,...Z],{sign:1})
         + sec("Operations")
@@ -4539,6 +4607,7 @@ function resultsHTML() {
         + (any(x=>x.mraDraw)?trow("MRA release (funds re-capex)",[0,...R.map(x=>x.mraDraw)],{sign:1}):"")
         + trow("DSRA movement",[0,...R.map(x=>-x.dDSRAcash)],{sign:1})
         + (vatOn?trow("VAT recovered ("+(m.vatRecMode==="offset"?"offset vs output VAT":"refund")+")",[0,...R.map(x=>x.vatRec)],{sign:1}):"")
+        + ((vatOn&&m.vatRecMode==="offset")?trow("memo: VAT collected on sales",["",...R.map(x=>x.vatOut)],{memo:1})+trow("memo: VAT paid on OpEx",["",...R.map(x=>-x.vatInOpex)],{memo:1})+trow("memo: remaining VAT credit (end of year)",[m.bs0.vatRecv,...R.map(x=>x.bs.vatRecv)],{memo:1}):"")
         + (facOn?trow("VAT facility interest",[0,...R.map(x=>-x.vatFacInt)],{sign:1})+trow("VAT facility repayment",[0,...R.map(x=>-x.vatFacRepay)],{sign:1}):"")
         + (any(x=>x.refiNew)?trow("Refinancing — new loan",[0,...R.map(x=>x.refiNew)],{sign:1})+trow("Refinancing — old debt repaid",[0,...R.map(x=>-x.refiRepaid)],{sign:1})+trow("Refinancing — costs",[0,...R.map(x=>-x.refiCost)],{sign:1}):"")
         + trow("Net cash generated (for distribution)",[0,...R.map(x=>x.distCash)],{strong:1})
@@ -4548,13 +4617,13 @@ function resultsHTML() {
         + trow("· Dividends",[0,...R.map(x=>-x.dividends)],{sign:1})
         + trow("Operating cash balance (end of year)",["—",...R.map(x=>x.opCashEnd)],{sign:1})
         + sec("Shareholder cash flow (AEG)")
-        + trow("Equity injected",[-m.equityTotal,...Z],{sign:1})
+        + trow("Equity injected (cash)",[-m.equityCash,...Z],{sign:1})
         + trow("Success dev fee received (COD)",[m.successFee,...Z],{sign:1})
         + ((m.priEqConstr>0||any(x=>x.priEq))?trow("Equity PRI premium (sponsor)",[-m.priEqConstr,...R.map(x=>-x.priEq)],{sign:1}):"")
         + trow("SHL interest + principal + dividends",[0,...R.map(x=>x.shlIntPay+x.shlPrinPay+x.dividends)],{sign:1})
         + (any(x=>x.whtDist)?trow("less WHT on SHL interest & dividends",[0,...R.map(x=>-x.whtDist)],{sign:1}):"")
         + trow("Reserves & residual cash released (end)",[0,...R.map(x=>x.reserveRelease)],{sign:1})
-        + trow("Shareholder cash flow (AEG)",[-m.equityTotal+m.successFee-m.priEqConstr,...R.map(x=>x.aegFCF)],{strong:1,sign:1});
+        + trow("Shareholder cash flow (AEG)",[-m.equityCash+m.successFee-m.priEqConstr,...R.map(x=>x.aegFCF)],{strong:1,sign:1});
     } else if (state.otab==="bs") {
       const B=[m.bs0,...R.map(x=>x.bs)], row=(l,f,o)=>trow(l,B.map(f),o||{sign:1});
       const nz=(f)=>B.some(b=>Math.abs(f(b))>0.5);
@@ -4658,7 +4727,7 @@ const legend=(items)=>'<div class="legend">'+items.map(x=>'<span><i style="backg
 
 /* ---------------- HANDLERS ---------------- */
 function renderInputs(){ document.getElementById("inputs").innerHTML=inputsHTML(); }
-function renderResults(){ document.getElementById("results").innerHTML=resultsHTML(); }
+function renderResults(){ document.getElementById("results").innerHTML=resultsHTML(); updateSaveStatus(); }
 function refreshProdPreview(){
   const g=document.getElementById("prodGrid"); if(g) g.innerHTML=prodGridHTML(p);
   const ch=document.getElementById("prodChart"); if(ch) ch.innerHTML=prodChartHTML(p);
@@ -4694,8 +4763,8 @@ window.setEscalLen=(v)=>{ let x=parseInt(v,10); if(!isFinite(x)) x=5; p.escalPer
 window.setGroup=(k,v)=>{ state.groups[k]=v; };   // V11 — remember open/closed collapsible sections
 window.toggleCumul=()=>{ state.hideCumul=!state.hideCumul; renderResults(); };   // V12 — hide/show cumulative line on the shareholder CF chart
 window.setTwoWay=(which,v)=>{ if(which==="row") state.twoWayRow=v; else if(which==="col") state.twoWayCol=v; else state.twoWayMetric=v; renderResults(); };
-window.setName=(v)=>{ p.name=v; };
-window.setText=(k2,v)=>{ p[k2]=v; };
+window.setName=(v)=>{ p.name=v; updateSaveStatus(); };
+window.setText=(k2,v)=>{ p[k2]=v; updateSaveStatus(); };
 window.setCountry=(c)=>{ p.country=c; const rec=fiscalRec(c); if(rec){ applyFiscalDB(rec); } else if(COUNTRIES[c]&&COUNTRIES[c].ccy){ const d=COUNTRIES[c]; ["cit","whtInt","whtDiv","whtShl","exoYears","exoRate","deprecYears"].forEach(k2=>{ if(d[k2]!==undefined) p[k2]=d[k2]; }); /* #9 — keep model currency (USD default); do not force local currency */ } renderInputs(); renderResults(); };
 // #7 — Save / open reliability.
 //   - localStorage is feature-detected (a real write/read test); when it's unavailable — e.g. the file opened
@@ -4708,32 +4777,44 @@ function lsOK(){ try{ const k="__bpsim_test__"; localStorage.setItem(k,"1"); con
 //        already net of it), no BESS degradation, and their previous VAT funding choice (facility or equity bridge).
 function migrateV22(obj){
   const o={...obj};
-  if(!("epcMode" in o)) o.epcMode="unit";
+  if(!("epcMode" in o)){   // saved before v22: keep the legacy financing-cost conventions too
+    o.epcMode="unit";
+    if(!("successFeeBase" in o)) o.successFeeBase="hard";
+    if(!("shlIdcOn" in o)) o.shlIdcOn=false;
+    if(!("bankFeesConstrOn" in o)) o.bankFeesConstrOn=false;
+    if(!("vatRecovery" in o)) o.vatRecovery="refund";
+  }
   if(!("plantAvail" in o)) o.plantAvail=100;
   if(!("gridAvail" in o)) o.gridAvail=100;
   if(!("bessSohDeg" in o)) o.bessSohDeg=0;
-  if(!("bessRteDeg" in o)) o.bessRteDeg=0;
+  if(!("bessRteDegPct" in o)) o.bessRteDegPct = ("bessRteDeg" in o && o.bessRTE>0) ? +(o.bessRteDeg*100/o.bessRTE).toFixed(3) : 0;   // pts → % of initial RTE
   if(!("vatFunding" in o)) o.vatFunding = o.vatFacility ? "facility" : "equity";
   if(!("pvEpcLump" in o) && isFinite(o.pvMW) && isFinite(o.pvCapexPerW)) o.pvEpcLump=Math.round(o.pvMW*1e6*o.pvCapexPerW);
   if(!("bessEpcLump" in o) && isFinite(o.bessMWh) && isFinite(o.bessCapexPerKWh)) o.bessEpcLump=Math.round(o.bessMWh*1000*o.bessCapexPerKWh);
   return o;
 }
 function loadState(obj){ if(!obj||typeof obj!=="object") return false; obj=migrateV22(obj); const merged=JSON.parse(JSON.stringify(DEFAULTS)); Object.assign(merged, obj); Object.keys(p).forEach(k=>{ if(!(k in merged)) delete p[k]; }); Object.assign(p, merged); return true; }
+// V22 — save status instead of a pop-up: "Saved hh:mm", "Unsaved changes", or "Downloaded as file".
+function saveStatusHTML(){
+  const sv=state.saved; if(!sv) return '<i style="color:#B9BAC2">●</i>Not saved yet';
+  const dirty = JSON.stringify(p)!==sv.snap;
+  const when = sv.at ? sv.at.toLocaleString([], {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+  if(dirty) return '<i style="color:#E9A23B">●</i>Unsaved changes · last saved '+when;
+  return '<i style="color:#1E7A54">●</i>'+({file:"Downloaded as file ",import:"Opened from file ",browser:"Saved in this browser "}[sv.where]||"Saved ")+(sv.where==="import"?"":when);
+}
+function updateSaveStatus(){ const el=document.getElementById("saveStat"); if(el) el.innerHTML=saveStatusHTML(); }
+function markSaved(where, at){ state.saved={snap:JSON.stringify(p), at: at||new Date(), where}; }
 window.saveLocal=()=>{
   const nm=((p.name||"Untitled").trim())||"Untitled";
   if(lsOK()){
-    try{ localStorage.setItem("bpsim:"+nm, JSON.stringify(p)); renderInputs();
-      alert('Project "'+nm+'" saved in this browser. It will reappear under "My projects…" when you reopen this file here.\n\nTip: use Export to keep a portable backup file you can reopen anywhere.');
-      return;
-    }catch(e){}
+    try{ localStorage.setItem("bpsim:"+nm, JSON.stringify(p)); localStorage.setItem("bpsimt:"+nm, new Date().toISOString()); markSaved("browser"); renderInputs(); return; }catch(e){}
   }
-  window.exportJSON();
-  alert("Browser storage isn't available here (the file may be opened directly from disk). Your project was downloaded as a .bpsim.json file instead — reopen it later with Import.");
+  window.exportJSON(); markSaved("file"); renderInputs();   // storage unavailable (file opened from disk): portable file instead
 };
-window.loadLocal=(key)=>{ if(!key) return; try{ const j=localStorage.getItem(key); if(j){ loadState(JSON.parse(j)); renderInputs(); renderResults(); } else { alert("That saved project could not be found."); } }catch(e){ alert("Could not open that saved project (the stored data may be corrupted)."); } };
-window.deleteLocal=()=>{ const names=savedProjects().map(x=>x.slice(6)); if(!names.length){ alert("No saved projects to delete."); return; } const nm=prompt("Delete which saved project?\n\n"+names.join("\n")); if(nm){ try{ localStorage.removeItem("bpsim:"+nm.trim()); renderInputs(); }catch(e){} } };
+window.loadLocal=(key)=>{ if(!key) return; try{ const j=localStorage.getItem(key); if(j){ loadState(JSON.parse(j)); let at=null; try{ const ts=localStorage.getItem("bpsimt:"+key.slice(6)); if(ts) at=new Date(ts); }catch(e){} markSaved("browser", at); renderInputs(); renderResults(); } else { alert("That saved project could not be found."); } }catch(e){ alert("Could not open that saved project (the stored data may be corrupted)."); } };
+window.deleteLocal=()=>{ const names=savedProjects().map(x=>x.slice(6)); if(!names.length){ alert("No saved projects to delete."); return; } const nm=prompt("Delete which saved project?\n\n"+names.join("\n")); if(nm){ try{ localStorage.removeItem("bpsim:"+nm.trim()); localStorage.removeItem("bpsimt:"+nm.trim()); renderInputs(); }catch(e){} } };
 window.exportJSON=()=>{ try{ const b=new Blob([JSON.stringify(p,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(p.name||"project")+".bpsim.json"; a.click(); }catch(e){ alert("Export failed in this browser."); } };
-window.importJSON=(e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ loadState(JSON.parse(r.result)); renderInputs(); renderResults(); }catch(err){ alert("Invalid file — could not read this project."); } e.target.value=""; }; r.readAsText(f); };
+window.importJSON=(e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ loadState(JSON.parse(r.result)); markSaved("import"); renderInputs(); renderResults(); }catch(err){ alert("Invalid file — could not read this project."); } e.target.value=""; }; r.readAsText(f); };
 window.exportCSV=()=>{
   const m=buildModel(p), R=m.rows, K=m.kpis, S=",", years=R.map(x=>"Y"+x.year);
   const q=(v)=>{ if(typeof v==="number") return Math.round(v).toString(); const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
@@ -4754,7 +4835,7 @@ window.exportCSV=()=>{
   O.push(row("Fin fee amort",x=>-x.feeAmort)); O.push(row("Senior interest",x=>-x.interest)); O.push(row("SHL interest",x=>-x.shlInterest));
   O.push(row("EBT",x=>x.ebt)); O.push(row("Income tax",x=>-x.tax)); O.push(row("Other taxes",x=>-x.otherTax)); O.push(row("Net income",x=>x.netIncome)); O.push("");
   O.push(L(["CASH FLOW ("+p.ccy+")","C",...years]));
-  O.push(L(["Debt drawdown",Math.round(m.debt),...R.map(()=>0)])); O.push(L(["Equity injection",Math.round(m.equityTotal),...R.map(()=>0)])); O.push(L(["Success fee to sponsor",Math.round(m.successFee),...R.map(()=>0)]));
+  O.push(L(["Debt drawdown",Math.round(m.debt),...R.map(()=>0)])); O.push(L(["Equity injection (cash)",Math.round(m.equityCash),...R.map(()=>0)])); O.push(L(["Success fee to sponsor",Math.round(m.successFee),...R.map(()=>0)]));
   O.push(row("Capex & re-capex",x=>-x.recapex,-Math.round(m.baseCost))); O.push(row("EBITDA",x=>x.ebitda,0)); O.push(row("Recurring fees",x=>-x.recurFees,0)); O.push(row("Cash tax",x=>-x.taxU,0)); O.push(row("CFADS",x=>x.cfads,0));
   O.push(row("Senior debt service",x=>-x.seniorDS,0)); O.push(L(["DSCR","",...R.map(x=>x.dscr==null?"":x.dscr.toFixed(2))])); O.push(L(["LLCR","",...R.map(x=>x.llcr==null?"":x.llcr.toFixed(2))]));
   if(m.refiYears&&m.refiYears.length){ O.push(row("Refinancing new loan",x=>x.refiNew,0)); O.push(row("Refinancing old debt repaid",x=>-x.refiRepaid,0)); O.push(row("Refinancing costs",x=>-x.refiCost,0)); }
@@ -4762,7 +4843,7 @@ window.exportCSV=()=>{
   if(p.priEqOn) O.push(row("Equity PRI premium (sponsor)",x=>-x.priEq,-Math.round(m.priEqConstr)));
   O.push(row("MRA provision",x=>-x.mraContribution,0)); O.push(row("DSRA movement",x=>-x.dDSRAcash,0)); O.push(row("Cash for distribution",x=>x.distCash,0));
   O.push(row("SHL interest",x=>-x.shlIntPay,0)); O.push(row("SHL principal",x=>-x.shlPrinPay,0)); O.push(row("Dividends",x=>-x.dividends,0));
-  O.push(row("Shareholder cash flow AEG",x=>x.aegFCF,-Math.round(m.equityTotal-m.successFee+m.priEqConstr))); O.push("");
+  O.push(row("Shareholder cash flow AEG",x=>x.aegFCF,-Math.round(m.equityCash-m.successFee+m.priEqConstr))); O.push("");
   if(m.vatInput>0){ O.push(L(["VAT ("+p.ccy+")","FC",...years])); O.push(L(["VAT on CapEx paid",-Math.round(m.vatInput),...R.map(()=>0)])); O.push(L(["VAT facility drawdown",Math.round(m.vatFac0),...R.map(()=>0)]));
     O.push(row("VAT recovered",x=>x.vatRec,0)); O.push(row("VAT facility interest",x=>-x.vatFacInt,0)); O.push(row("VAT facility repayment",x=>-x.vatFacRepay,0)); O.push(""); }
   O.push(L(["BALANCE SHEET ("+p.ccy+")","FC",...years]));
@@ -5060,7 +5141,7 @@ function yieldEstimatorHTML(){
         +'. Yields are <b>at 100% availability and before degradation</b> (applied in the model). “Use” copies the P50 into the Specific yield field above and sets the P90/P50 ratio.');
     }
   }
-  return collapse("yield_estimator","🌞 Yield estimator (P50/P75/P90)", body, false, "v15");
+  return collapse("yield_estimator","🌞 Yield estimator (P50/P75/P90)", body, false, (e&&e.status==="ok")?"on":"");
 }
 
 
